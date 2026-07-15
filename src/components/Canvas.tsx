@@ -40,12 +40,19 @@ import {
   AlignEndHorizontal,
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
+  StickyNote,
 } from "lucide-react";
 import SystemNodeComponent, { type SystemNode } from "@/components/SystemNode";
+import NoteNodeComponent, {
+  NOTE_COLOR,
+  type NoteNode,
+} from "@/components/NoteNode";
+import type { AppNode } from "@/lib/appNode";
 import HelperLines from "@/components/HelperLines";
 import { getHelperLines } from "@/lib/helperLines";
 import { computeAlignment, type AlignMode } from "@/lib/align";
 import DetailsPanel from "@/components/DetailsPanel";
+import NoteEditorPanel from "@/components/NoteEditorPanel";
 import EdgePanel from "@/components/EdgePanel";
 import PromptPanel from "@/components/PromptPanel";
 import { TEMPLATES, type Template } from "@/lib/templates";
@@ -71,7 +78,7 @@ const CANVAS_COLORS = {
 const DEFAULT_TITLE = "Untitled system";
 
 // Two starter nodes so the canvas isn't empty on first load.
-const initialNodes: SystemNode[] = [
+const initialNodes: AppNode[] = [
   {
     id: "1",
     type: "system",
@@ -96,6 +103,8 @@ let nextEdgeId = 1000;
 
 const DRAG_TYPE = "application/sketchstack-template";
 const DRAG_NODE_TYPE = "application/sketchstack-node";
+// Sentinel value carried in DRAG_NODE_TYPE when dragging the Note chip.
+const NOTE_DRAG = "__note__";
 
 // Align toolbar actions (shown when 2+ nodes are selected).
 const ALIGN_ACTIONS: { mode: AlignMode; Icon: typeof Undo2; label: string }[] = [
@@ -116,14 +125,14 @@ const STORAGE_KEY = "sketchstack:diagram:v1";
 const LEGACY_KEY = "sysdesign:diagram:v1";
 
 export default function Canvas() {
-  const [nodes, setNodes] = useNodesState<SystemNode>(initialNodes);
+  const [nodes, setNodes] = useNodesState<AppNode>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string | null>(null);
   const [title, setTitle] = useState(DEFAULT_TITLE);
   const [rfInstance, setRfInstance] =
-    useState<ReactFlowInstance<SystemNode, Edge> | null>(null);
+    useState<ReactFlowInstance<AppNode, Edge> | null>(null);
   // Minimap only shows while the user is moving around, then fades out.
   const [minimapVisible, setMinimapVisible] = useState(false);
   const minimapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,8 +140,8 @@ export default function Canvas() {
   const [helperLineH, setHelperLineH] = useState<number | undefined>();
   const [helperLineV, setHelperLineV] = useState<number | undefined>();
   // Undo/redo history. Each entry is a snapshot of the whole diagram.
-  const [past, setPast] = useState<{ nodes: SystemNode[]; edges: Edge[] }[]>([]);
-  const [future, setFuture] = useState<{ nodes: SystemNode[]; edges: Edge[] }[]>(
+  const [past, setPast] = useState<{ nodes: AppNode[]; edges: Edge[] }[]>([]);
+  const [future, setFuture] = useState<{ nodes: AppNode[]; edges: Edge[] }[]>(
     [],
   );
   // Gates auto-save: we must not persist until we've loaded any saved diagram,
@@ -141,7 +150,11 @@ export default function Canvas() {
   const { theme } = useTheme();
   const colors = CANVAS_COLORS[theme];
 
-  const selectedNode = nodes.find((n) => n.id === selectedId) ?? null;
+  const selected = nodes.find((n) => n.id === selectedId) ?? null;
+  const selectedSystemNode =
+    selected?.type === "system" ? (selected as SystemNode) : null;
+  const selectedNoteNode =
+    selected?.type === "note" ? (selected as NoteNode) : null;
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null;
   const selectedNodes = nodes.filter((n) => n.selected);
 
@@ -215,7 +228,7 @@ export default function Canvas() {
   // Node changes with alignment snapping. When a single node is being dragged,
   // snap it to the nearest alignment with another node and show guide lines.
   const onNodesChange = useCallback(
-    (changes: NodeChange<SystemNode>[]) => {
+    (changes: NodeChange<AppNode>[]) => {
       setHelperLineH(undefined);
       setHelperLineV(undefined);
 
@@ -246,12 +259,24 @@ export default function Canvas() {
     setSelectedId(null);
   }, [takeSnapshot, setNodes, setEdges]);
 
-  // Merge a patch into the selected node's data (used by the details panel).
+  // Merge a patch into the selected system node's data (details panel).
   const updateNodeData = useCallback(
     (id: string, patch: Partial<SystemNodeData>) => {
       setNodes((nds) =>
         nds.map((n) =>
-          n.id === id ? { ...n, data: { ...n.data, ...patch } } : n,
+          n.id === id ? ({ ...n, data: { ...n.data, ...patch } } as AppNode) : n,
+        ),
+      );
+    },
+    [setNodes],
+  );
+
+  // Merge a patch into the selected note's data (note editor panel).
+  const updateNoteData = useCallback(
+    (id: string, patch: Partial<NoteNode["data"]>) => {
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === id ? ({ ...n, data: { ...n.data, ...patch } } as AppNode) : n,
         ),
       );
     },
@@ -282,8 +307,8 @@ export default function Canvas() {
           id: copyId,
           position: { x: source.position.x + 40, y: source.position.y + 40 },
           selected: true,
-          data: { ...source.data },
-        },
+          data: structuredClone(source.data),
+        } as AppNode,
       ]);
       setSelectedId(copyId);
     },
@@ -340,13 +365,16 @@ export default function Canvas() {
     const selected = nodes.filter((n) => n.selected);
     if (selected.length === 0) return;
     takeSnapshot();
-    const copies = selected.map((n) => ({
-      ...n,
-      id: String(nextId++),
-      position: { x: n.position.x + 40, y: n.position.y + 40 },
-      selected: true,
-      data: { ...n.data },
-    }));
+    const copies = selected.map(
+      (n) =>
+        ({
+          ...n,
+          id: String(nextId++),
+          position: { x: n.position.x + 40, y: n.position.y + 40 },
+          selected: true,
+          data: structuredClone(n.data),
+        }) as AppNode,
+    );
     setNodes((nds) => [
       ...nds.map((n) => ({ ...n, selected: false })),
       ...copies,
@@ -355,7 +383,10 @@ export default function Canvas() {
 
   // Register our custom node under the "system" type. Memoized so React Flow
   // doesn't warn about a new object every render.
-  const nodeTypes = useMemo(() => ({ system: SystemNodeComponent }), []);
+  const nodeTypes = useMemo(
+    () => ({ system: SystemNodeComponent, note: NoteNodeComponent }),
+    [],
+  );
 
   // Fired when the user drags from one node's handle to another.
   const onConnect = useCallback(
@@ -474,6 +505,30 @@ export default function Canvas() {
     [takeSnapshot, setNodes],
   );
 
+  // Create a standalone note card (click or drop from the palette).
+  const addNote = useCallback(
+    (position?: { x: number; y: number }) => {
+      takeSnapshot();
+      const id = String(nextId++);
+      const note: NoteNode = {
+        id,
+        type: "note",
+        position: position ?? {
+          x: 120 + Math.random() * 240,
+          y: 120 + Math.random() * 240,
+        },
+        data: {
+          bullets: [{ id: `${id}-b0`, text: "", children: [] }],
+          promptInclude: "bullets",
+        },
+        selected: true,
+      };
+      setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), note]);
+      setSelectedId(id);
+    },
+    [takeSnapshot, setNodes],
+  );
+
   // Drop a dragged node type or template onto the canvas at the cursor.
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -484,7 +539,12 @@ export default function Canvas() {
         y: event.clientY,
       });
 
-      const kind = event.dataTransfer.getData(DRAG_NODE_TYPE) as NodeKind;
+      const dragged = event.dataTransfer.getData(DRAG_NODE_TYPE);
+      if (dragged === NOTE_DRAG) {
+        addNote(position);
+        return;
+      }
+      const kind = dragged as NodeKind;
       if (kind && NODE_KINDS[kind]) {
         addNode(kind, NODE_KINDS[kind].label, position);
         return;
@@ -494,7 +554,7 @@ export default function Canvas() {
       );
       if (template) addTemplate(template, position);
     },
-    [rfInstance, addNode, addTemplate],
+    [rfInstance, addNode, addNote, addTemplate],
   );
 
   // Hidden file input drives "Import design".
@@ -647,6 +707,28 @@ export default function Canvas() {
                 ))}
               </div>
             </div>
+            <div className="mb-2">
+              <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)] opacity-70">
+                Annotate · drag or click
+              </div>
+              <button
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(DRAG_NODE_TYPE, NOTE_DRAG);
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+                onClick={() => addNote()}
+                style={{
+                  borderColor: NOTE_COLOR,
+                  backgroundColor: `${NOTE_COLOR}1a`,
+                }}
+                className="flex w-full cursor-grab items-center gap-1 rounded-md border px-1.5 py-1 text-xs font-medium text-[var(--text)] transition-transform hover:scale-[1.03] active:cursor-grabbing"
+                title="Click to add or drag onto canvas — Note"
+              >
+                <StickyNote size={13} style={{ color: NOTE_COLOR }} strokeWidth={2.25} />
+                Note
+              </button>
+            </div>
             <div className="mb-1 flex items-center justify-between px-1">
               <span className="text-xs font-semibold text-[var(--muted)]">
                 Add a component
@@ -786,13 +868,24 @@ export default function Canvas() {
             </span>
           </div>
         </Panel>
-        {selectedNode ? (
+        {selectedSystemNode ? (
           <Panel position="top-right">
             <DetailsPanel
-              node={selectedNode}
-              onChange={(patch) => updateNodeData(selectedNode.id, patch)}
-              onDuplicate={() => duplicateNode(selectedNode.id)}
-              onDelete={() => deleteNode(selectedNode.id)}
+              node={selectedSystemNode}
+              onChange={(patch) => updateNodeData(selectedSystemNode.id, patch)}
+              onDuplicate={() => duplicateNode(selectedSystemNode.id)}
+              onDelete={() => deleteNode(selectedSystemNode.id)}
+              onClose={() => setSelectedId(null)}
+            />
+          </Panel>
+        ) : null}
+        {selectedNoteNode ? (
+          <Panel position="top-right">
+            <NoteEditorPanel
+              node={selectedNoteNode}
+              onChange={(patch) => updateNoteData(selectedNoteNode.id, patch)}
+              onDuplicate={() => duplicateNode(selectedNoteNode.id)}
+              onDelete={() => deleteNode(selectedNoteNode.id)}
               onClose={() => setSelectedId(null)}
             />
           </Panel>

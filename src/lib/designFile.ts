@@ -1,5 +1,5 @@
 import type { Edge } from "@xyflow/react";
-import type { SystemNode } from "@/components/SystemNode";
+import type { AppNode } from "@/lib/appNode";
 import { slugify } from "@/lib/exportImage";
 
 // The on-disk format for a downloaded design. Versioned so we can migrate later.
@@ -7,14 +7,14 @@ export interface DesignFile {
   app: "sketchstack";
   version: 1;
   title: string;
-  nodes: SystemNode[];
+  nodes: AppNode[];
   edges: Edge[];
 }
 
 // Download the current diagram as a .json design file (round-trippable).
 export function downloadDesign(
   title: string,
-  nodes: SystemNode[],
+  nodes: AppNode[],
   edges: Edge[],
 ) {
   const data: DesignFile = { app: "sketchstack", version: 1, title, nodes, edges };
@@ -32,7 +32,7 @@ export function downloadDesign(
 // Parse imported text into a design, or throw if it's not a valid design file.
 export function parseDesign(text: string): {
   title: string;
-  nodes: SystemNode[];
+  nodes: AppNode[];
   edges: Edge[];
 } {
   const data = JSON.parse(text) as Partial<DesignFile>;
@@ -41,7 +41,7 @@ export function parseDesign(text: string): {
   }
   return {
     title: typeof data.title === "string" ? data.title : "Imported design",
-    nodes: data.nodes as SystemNode[],
+    nodes: data.nodes as AppNode[],
     edges: data.edges as Edge[],
   };
 }
