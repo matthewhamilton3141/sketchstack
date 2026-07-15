@@ -46,8 +46,8 @@ export default function UsernameModal({ userId, onDone }: UsernameModalProps) {
           Pick a username
         </div>
         <p className="mb-3 mt-1 text-sm text-[var(--muted)]">
-          This is how you&apos;ll be shown in sysdesign. You can only set it once
-          for now.
+          This is how you&apos;ll be shown in Sketchstack. You can only set it
+          once for now.
         </p>
         <div className="flex items-center rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-2">
           <span className="text-sm text-[var(--muted)]">@</span>

@@ -8,10 +8,10 @@ export default function Home() {
       <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--panel)] px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-lg font-semibold tracking-tight text-[var(--text)]">
-            sysdesign
+            Sketchstack
           </span>
           <span className="hidden text-sm text-[var(--muted)] sm:inline">
-            — sketch your system, generate a prompt
+            — sketch your stack, generate a prompt
           </span>
         </div>
         <div className="flex items-center gap-3">

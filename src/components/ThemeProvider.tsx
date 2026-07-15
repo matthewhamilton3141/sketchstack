@@ -10,7 +10,7 @@ import {
 
 export type Theme = "light" | "dusk" | "dark";
 
-const STORAGE_KEY = "sysdesign:theme";
+const STORAGE_KEY = "sketchstack:theme";
 
 const ThemeContext = createContext<{
   theme: Theme;

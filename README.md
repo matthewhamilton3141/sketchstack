@@ -1,10 +1,10 @@
-# sysdesign
+# Sketchstack
 
 A visual systems-design tool that turns a diagram into a structured prompt for
-your AI coding agent. Drag typed components onto a canvas, wire them together,
-describe each one, then generate a clean spec you can paste into Claude Code,
-Cursor, or any agent — so you plan by *seeing* how the system connects instead
-of writing plain text.
+your AI coding agent. Sketch your stack: drag typed components onto a canvas,
+wire them together, describe each one, then generate a clean spec you can paste
+into Claude Code, Cursor, or any agent — so you plan by *seeing* how the system
+connects instead of writing plain text.
 
 ## Features
 

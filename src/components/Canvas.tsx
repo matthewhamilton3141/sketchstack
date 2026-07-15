@@ -63,8 +63,10 @@ const initialEdges: Edge[] = [
 let nextId = 3;
 
 // Where the diagram is auto-saved in the browser. Bump the version suffix if
-// the saved shape ever changes in a breaking way.
-const STORAGE_KEY = "sysdesign:diagram:v1";
+// the saved shape ever changes in a breaking way. LEGACY_KEY is the pre-rebrand
+// key, read once so existing diagrams migrate over.
+const STORAGE_KEY = "sketchstack:diagram:v1";
+const LEGACY_KEY = "sysdesign:diagram:v1";
 
 export default function Canvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState<SystemNode>(initialNodes);
@@ -84,7 +86,8 @@ export default function Canvas() {
   // Load any previously saved diagram once, on mount (browser-only).
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw =
+        localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as { nodes?: SystemNode[]; edges?: Edge[] };
         if (saved.nodes?.length) {

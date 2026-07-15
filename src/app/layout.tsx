@@ -15,12 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "sysdesign",
-  description: "Sketch your system, generate a prompt for your AI coding agent.",
+  title: "Sketchstack",
+  description: "Sketch your stack, generate a prompt for your AI coding agent.",
 };
 
 // Runs before React hydrates so the correct theme is applied with no flash.
-const themeScript = `(function(){try{var t=localStorage.getItem('sysdesign:theme')||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=t;}catch(e){document.documentElement.dataset.theme='light';}})();`;
+const themeScript = `(function(){try{var t=localStorage.getItem('sketchstack:theme')||localStorage.getItem('sysdesign:theme')||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=t;}catch(e){document.documentElement.dataset.theme='light';}})();`;
 
 export default function RootLayout({
   children,

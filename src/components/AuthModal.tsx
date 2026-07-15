@@ -39,7 +39,7 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-1 text-lg font-semibold text-[var(--text)]">
-          Sign in to sysdesign
+          Sign in to Sketchstack
         </div>
 
         {status === "sent" ? (
