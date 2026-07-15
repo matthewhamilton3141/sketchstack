@@ -1,6 +1,7 @@
 import Canvas from "@/components/Canvas";
 import AuthBar from "@/components/AuthBar";
 import ThemeToggle from "@/components/ThemeToggle";
+import HeaderLinks from "@/components/HeaderLinks";
 
 export default function Home() {
   return (
@@ -15,6 +16,7 @@ export default function Home() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <HeaderLinks />
           <ThemeToggle />
           <AuthBar />
         </div>
