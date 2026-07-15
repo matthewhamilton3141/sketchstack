@@ -20,19 +20,6 @@
   --edge: #94a3b8;
 }
 
-[data-theme="dusk"] {
-  --bg: #2b3648;
-  --panel: #374257;
-  --panel-2: #414e66;
-  --border: #4c5a76;
-  --text: #e6ecf5;
-  --muted: #9fb0c8;
-  --btn-bg: #e6ecf5;
-  --btn-text: #1e293b;
-  --btn-hover: #cbd5e1;
-  --edge: #8ea3c0;
-}
-
 [data-theme="dark"] {
   --bg: #0a0a0a;
   --panel: #171717;
@@ -52,17 +39,18 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
-/* ---- React Flow chrome themed via tokens ---- */
+/* ---- React Flow chrome themed via tokens. !important is needed because the
+   library's own stylesheet loads after this file and would otherwise win. ---- */
 .react-flow__controls-button {
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
+  background: var(--panel) !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--text) !important;
 }
 .react-flow__controls-button:hover {
-  background: var(--panel-2);
+  background: var(--panel-2) !important;
 }
 .react-flow__controls-button svg {
-  fill: var(--text);
+  fill: var(--text) !important;
 }
 .react-flow__edge-path {
   stroke: var(--edge);
@@ -73,10 +61,10 @@ body {
 }
 /* Edge labels: match the panel surface + text color for every theme. */
 .react-flow__edge-textbg {
-  fill: var(--panel);
+  fill: var(--panel) !important;
 }
 .react-flow__edge-text {
-  fill: var(--text);
+  fill: var(--text) !important;
 }
 .react-flow__attribution {
   background: transparent;

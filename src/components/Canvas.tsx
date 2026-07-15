@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ReactFlow,
   Background,
@@ -8,22 +15,40 @@ import {
   MiniMap,
   Panel,
   addEdge,
+  reconnectEdge,
+  applyNodeChanges,
   useNodesState,
   useEdgesState,
   MarkerType,
   ConnectionMode,
+  SelectionMode,
   type Edge,
   type Connection,
+  type NodeChange,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { Undo2, Redo2 } from "lucide-react";
+import {
+  Undo2,
+  Redo2,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+  AlignHorizontalDistributeCenter,
+  AlignVerticalDistributeCenter,
+} from "lucide-react";
 import SystemNodeComponent, { type SystemNode } from "@/components/SystemNode";
+import HelperLines from "@/components/HelperLines";
+import { getHelperLines } from "@/lib/helperLines";
+import { computeAlignment, type AlignMode } from "@/lib/align";
 import DetailsPanel from "@/components/DetailsPanel";
 import EdgePanel from "@/components/EdgePanel";
 import PromptPanel from "@/components/PromptPanel";
-import TemplatesModal from "@/components/TemplatesModal";
-import { type Template } from "@/lib/templates";
+import { TEMPLATES, type Template } from "@/lib/templates";
 import { useTheme } from "@/components/ThemeProvider";
 import { generatePrompt } from "@/lib/generatePrompt";
 import { exportCanvasImage, slugify } from "@/lib/exportImage";
@@ -40,7 +65,6 @@ import {
 // image-export background, which can't read CSS variables. Keyed by theme.
 const CANVAS_COLORS = {
   light: { grid: "#cbd5e1", miniBg: "#ffffff", miniMask: "rgba(15,23,42,0.06)", bg: "#eef2f6" },
-  dusk: { grid: "#46536b", miniBg: "#374257", miniMask: "rgba(0,0,0,0.28)", bg: "#2b3648" },
   dark: { grid: "#2a2a2a", miniBg: "#171717", miniMask: "rgba(0,0,0,0.5)", bg: "#0a0a0a" },
 } as const;
 
@@ -66,8 +90,23 @@ const initialEdges: Edge[] = [
   { id: "e1-2", source: "1", target: "2", markerEnd: { type: MarkerType.ArrowClosed } },
 ];
 
-// Every new node needs a unique id; a simple counter is enough for now.
+// Every new node/edge needs a unique id; simple counters are enough for now.
 let nextId = 3;
+let nextEdgeId = 1000;
+
+const DRAG_TYPE = "application/sketchstack-template";
+
+// Align toolbar actions (shown when 2+ nodes are selected).
+const ALIGN_ACTIONS: { mode: AlignMode; Icon: typeof Undo2; label: string }[] = [
+  { mode: "left", Icon: AlignStartVertical, label: "Align left" },
+  { mode: "centerX", Icon: AlignCenterVertical, label: "Align horizontal centers" },
+  { mode: "right", Icon: AlignEndVertical, label: "Align right" },
+  { mode: "top", Icon: AlignStartHorizontal, label: "Align top" },
+  { mode: "middleY", Icon: AlignCenterHorizontal, label: "Align vertical centers" },
+  { mode: "bottom", Icon: AlignEndHorizontal, label: "Align bottom" },
+  { mode: "distH", Icon: AlignHorizontalDistributeCenter, label: "Distribute horizontally" },
+  { mode: "distV", Icon: AlignVerticalDistributeCenter, label: "Distribute vertically" },
+];
 
 // Where the diagram is auto-saved in the browser. Bump the version suffix if
 // the saved shape ever changes in a breaking way. LEGACY_KEY is the pre-rebrand
@@ -76,13 +115,20 @@ const STORAGE_KEY = "sketchstack:diagram:v1";
 const LEGACY_KEY = "sysdesign:diagram:v1";
 
 export default function Canvas() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<SystemNode>(initialNodes);
+  const [nodes, setNodes] = useNodesState<SystemNode>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string | null>(null);
   const [title, setTitle] = useState(DEFAULT_TITLE);
-  const [showTemplates, setShowTemplates] = useState(false);
+  const [rfInstance, setRfInstance] =
+    useState<ReactFlowInstance<SystemNode, Edge> | null>(null);
+  // Minimap only shows while the user is moving around, then fades out.
+  const [minimapVisible, setMinimapVisible] = useState(false);
+  const minimapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Alignment guide lines shown while dragging a single node.
+  const [helperLineH, setHelperLineH] = useState<number | undefined>();
+  const [helperLineV, setHelperLineV] = useState<number | undefined>();
   // Undo/redo history. Each entry is a snapshot of the whole diagram.
   const [past, setPast] = useState<{ nodes: SystemNode[]; edges: Edge[] }[]>([]);
   const [future, setFuture] = useState<{ nodes: SystemNode[]; edges: Edge[] }[]>(
@@ -96,6 +142,7 @@ export default function Canvas() {
 
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null;
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null;
+  const selectedNodes = nodes.filter((n) => n.selected);
 
   // Push the current diagram onto the undo stack (call BEFORE a mutation).
   const takeSnapshot = useCallback(() => {
@@ -163,6 +210,32 @@ export default function Canvas() {
       // Storage full or disabled — ignore; the app still works in-memory.
     }
   }, [nodes, edges, title, hydrated]);
+
+  // Node changes with alignment snapping. When a single node is being dragged,
+  // snap it to the nearest alignment with another node and show guide lines.
+  const onNodesChange = useCallback(
+    (changes: NodeChange<SystemNode>[]) => {
+      setHelperLineH(undefined);
+      setHelperLineV(undefined);
+
+      const only = changes[0];
+      if (
+        changes.length === 1 &&
+        only.type === "position" &&
+        only.dragging &&
+        only.position
+      ) {
+        const lines = getHelperLines(only, nodes);
+        only.position.x = lines.snapPosition.x ?? only.position.x;
+        only.position.y = lines.snapPosition.y ?? only.position.y;
+        setHelperLineH(lines.horizontal);
+        setHelperLineV(lines.vertical);
+      }
+
+      setNodes((ns) => applyNodeChanges(changes, ns));
+    },
+    [nodes, setNodes],
+  );
 
   // Wipe the canvas and the saved copy.
   const clearCanvas = useCallback(() => {
@@ -297,29 +370,99 @@ export default function Canvas() {
     [takeSnapshot, setEdges],
   );
 
-  const handleExport = useCallback(
-    (format: "png" | "svg") =>
-      exportCanvasImage(nodes, format, colors.bg, slugify(title)),
-    [nodes, colors.bg, title],
+  // Drag an existing edge's endpoint onto a different node/handle to rewire it.
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      takeSnapshot();
+      setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds));
+    },
+    [takeSnapshot, setEdges],
   );
 
-  // Replace the canvas with a starter template.
-  const applyTemplate = useCallback(
-    (template: Template) => {
+  const handleExport = useCallback(
+    (format: "png" | "svg") => exportCanvasImage(nodes, format, slugify(title)),
+    [nodes, title],
+  );
+
+  // Merge a template into the current diagram (compose multiple templates).
+  // `position` is the flow-space top-left to drop it at; defaults to a spot
+  // offset from the origin when added by click.
+  const addTemplate = useCallback(
+    (template: Template, position?: { x: number; y: number }) => {
       takeSnapshot();
-      setNodes(template.nodes.map((n) => ({ ...n })));
-      setEdges(template.edges.map((e) => ({ ...e })));
-      setTitle(template.title);
-      nextId =
-        Math.max(
-          0,
-          ...template.nodes.map((n) => Number(n.id)).filter(Number.isFinite),
-        ) + 1;
+      const minX = Math.min(...template.nodes.map((n) => n.position.x));
+      const minY = Math.min(...template.nodes.map((n) => n.position.y));
+      const baseX = position?.x ?? 160;
+      const baseY = position?.y ?? 160;
+
+      // Remap template ids to fresh ids so repeated adds never collide.
+      const idMap = new Map<string, string>();
+      const newNodes: SystemNode[] = template.nodes.map((n) => {
+        const id = String(nextId++);
+        idMap.set(n.id, id);
+        return {
+          ...n,
+          id,
+          selected: false,
+          position: {
+            x: baseX + (n.position.x - minX),
+            y: baseY + (n.position.y - minY),
+          },
+          data: { ...n.data },
+        };
+      });
+      const newEdges: Edge[] = template.edges.map((e) => ({
+        ...e,
+        id: `e${nextEdgeId++}`,
+        source: idMap.get(e.source)!,
+        target: idMap.get(e.target)!,
+      }));
+
+      setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), ...newNodes]);
+      setEdges((eds) => [...eds, ...newEdges]);
       setSelectedId(null);
       setSelectedEdgeId(null);
-      setShowTemplates(false);
     },
     [takeSnapshot, setNodes, setEdges],
+  );
+
+  // Align/distribute the currently multi-selected nodes.
+  const alignSelected = useCallback(
+    (mode: AlignMode) => {
+      const selected = nodes.filter((n) => n.selected);
+      if (selected.length < 2) return;
+      const positions = computeAlignment(selected, mode);
+      takeSnapshot();
+      setNodes((nds) =>
+        nds.map((n) =>
+          positions.has(n.id) ? { ...n, position: positions.get(n.id)! } : n,
+        ),
+      );
+    },
+    [nodes, takeSnapshot, setNodes],
+  );
+
+  // Show the minimap and (re)arm the timer that hides it after inactivity.
+  const pokeMinimap = useCallback(() => {
+    setMinimapVisible(true);
+    if (minimapTimer.current) clearTimeout(minimapTimer.current);
+    minimapTimer.current = setTimeout(() => setMinimapVisible(false), 1200);
+  }, []);
+
+  // Drop a dragged template onto the canvas at the cursor position.
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      const id = event.dataTransfer.getData(DRAG_TYPE);
+      const template = TEMPLATES.find((t) => t.id === id);
+      if (!template || !rfInstance) return;
+      const position = rfInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      addTemplate(template, position);
+    },
+    [rfInstance, addTemplate],
   );
 
   // Hidden file input drives "Import design".
@@ -413,11 +556,21 @@ export default function Canvas() {
         edges={edges}
         nodeTypes={nodeTypes}
         connectionMode={ConnectionMode.Loose}
+        selectionMode={SelectionMode.Partial}
         deleteKeyCode={null}
         onNodeDragStart={takeSnapshot}
+        onInit={setRfInstance}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onReconnect={onReconnect}
+        onMove={pokeMinimap}
+        onNodeDrag={pokeMinimap}
+        onDrop={onDrop}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }}
         onNodeClick={(_, node) => {
           setSelectedId(node.id);
           setSelectedEdgeId(null);
@@ -433,6 +586,7 @@ export default function Canvas() {
         fitView
       >
         <Background color={colors.grid} gap={20} />
+        <HelperLines horizontal={helperLineH} vertical={helperLineV} />
         <Controls />
         <MiniMap
           pannable
@@ -447,16 +601,35 @@ export default function Canvas() {
             backgroundColor: colors.miniBg,
             border: "1px solid var(--border)",
             borderRadius: 8,
+            opacity: minimapVisible ? 1 : 0,
+            transition: "opacity 250ms ease",
+            pointerEvents: minimapVisible ? "auto" : "none",
           }}
         />
         <Panel position="top-left">
           <div className="flex max-h-[calc(100vh-8rem)] w-56 flex-col overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--panel)] p-2 shadow-sm">
-            <button
-              onClick={() => setShowTemplates(true)}
-              className="mb-2 w-full rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-2 py-1.5 text-xs font-semibold text-[var(--text)] hover:bg-[var(--border)]"
-            >
-              ✨ Start from a template
-            </button>
+            <div className="mb-2">
+              <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)] opacity-70">
+                Templates · drag or click
+              </div>
+              <div className="flex flex-col gap-1">
+                {TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(DRAG_TYPE, t.id);
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    onClick={() => addTemplate(t)}
+                    className="cursor-grab rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-2 py-1 text-left text-xs font-medium text-[var(--text)] hover:bg-[var(--border)] active:cursor-grabbing"
+                    title={t.description}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mb-1 flex items-center justify-between px-1">
               <span className="text-xs font-semibold text-[var(--muted)]">
                 Add a component
@@ -558,6 +731,26 @@ export default function Canvas() {
             </div>
           </div>
         </Panel>
+        {selectedNodes.length >= 2 ? (
+          <Panel position="top-center">
+            <div className="mt-14 flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--panel)] px-1.5 py-1 shadow-sm">
+              {ALIGN_ACTIONS.map((a, i) => (
+                <Fragment key={a.mode}>
+                  {i === 3 || i === 6 ? (
+                    <span className="mx-0.5 h-4 w-px bg-[var(--border)]" />
+                  ) : null}
+                  <button
+                    onClick={() => alignSelected(a.mode)}
+                    title={a.label}
+                    className="rounded-md p-1 text-[var(--text)] hover:bg-[var(--panel-2)]"
+                  >
+                    <a.Icon size={15} />
+                  </button>
+                </Fragment>
+              ))}
+            </div>
+          </Panel>
+        ) : null}
         <Panel position="bottom-center">
           <div className="flex flex-col items-center gap-1">
             <button
@@ -598,12 +791,6 @@ export default function Canvas() {
           prompt={prompt}
           fileName={`${slugify(title)}-prompt`}
           onClose={() => setPrompt(null)}
-        />
-      ) : null}
-      {showTemplates ? (
-        <TemplatesModal
-          onSelect={applyTemplate}
-          onClose={() => setShowTemplates(false)}
         />
       ) : null}
     </div>

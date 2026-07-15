@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type Theme = "light" | "dusk" | "dark";
+export type Theme = "light" | "dark";
 
 const STORAGE_KEY = "sketchstack:theme";
 
@@ -23,9 +23,17 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("light");
 
   // On mount, adopt whatever the pre-hydration script already set on <html>.
+  // Coerce anything unexpected (e.g. the removed "dusk") to a valid theme.
   useEffect(() => {
-    const current = document.documentElement.dataset.theme as Theme | undefined;
-    if (current) setThemeState(current);
+    const current = document.documentElement.dataset.theme;
+    const valid: Theme = current === "dark" ? "dark" : "light";
+    setThemeState(valid);
+    document.documentElement.dataset.theme = valid;
+    try {
+      localStorage.setItem(STORAGE_KEY, valid);
+    } catch {
+      // ignore storage errors
+    }
   }, []);
 
   const setTheme = (t: Theme) => {
