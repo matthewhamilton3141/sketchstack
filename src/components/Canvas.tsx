@@ -450,6 +450,30 @@ export default function Canvas() {
     minimapTimer.current = setTimeout(() => setMinimapVisible(false), 1200);
   }, []);
 
+  const addNode = useCallback(
+    (kind: NodeKind, label: string, position?: { x: number; y: number }) => {
+      takeSnapshot();
+      const id = String(nextId++);
+      setNodes((nds) => [
+        ...nds.map((n) => ({ ...n, selected: false })),
+        {
+          id,
+          type: "system",
+          // Use the drop position if given, else a slightly random spot so
+          // click-added nodes don't stack exactly.
+          position: position ?? {
+            x: 120 + Math.random() * 240,
+            y: 120 + Math.random() * 240,
+          },
+          data: { kind, label },
+          selected: true,
+        },
+      ]);
+      setSelectedId(id);
+    },
+    [takeSnapshot, setNodes],
+  );
+
   // Drop a dragged node type or template onto the canvas at the cursor.
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -531,30 +555,6 @@ export default function Canvas() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo, duplicateSelected, deleteSelected]);
-
-  const addNode = useCallback(
-    (kind: NodeKind, label: string, position?: { x: number; y: number }) => {
-      takeSnapshot();
-      const id = String(nextId++);
-      setNodes((nds) => [
-        ...nds.map((n) => ({ ...n, selected: false })),
-        {
-          id,
-          type: "system",
-          // Use the drop position if given, else a slightly random spot so
-          // click-added nodes don't stack exactly.
-          position: position ?? {
-            x: 120 + Math.random() * 240,
-            y: 120 + Math.random() * 240,
-          },
-          data: { kind, label },
-          selected: true,
-        },
-      ]);
-      setSelectedId(id);
-    },
-    [takeSnapshot, setNodes],
-  );
 
   return (
     <div className="relative h-full w-full bg-[var(--bg)]">
