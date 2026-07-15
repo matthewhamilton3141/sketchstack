@@ -67,8 +67,11 @@ body {
   fill: var(--text) !important;
 }
 .react-flow__attribution {
-  background: transparent;
+  /* Nudge inward from the corner so React Flow's overflow:hidden pane doesn't
+     clip it, and keep the background transparent so it reads on any theme. */
+  background: transparent !important;
+  transform: translate(6px, -4px);
 }
 .react-flow__attribution a {
-  color: var(--muted);
+  color: var(--muted) !important;
 }
