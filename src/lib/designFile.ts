@@ -1,0 +1,47 @@
+import type { Edge } from "@xyflow/react";
+import type { SystemNode } from "@/components/SystemNode";
+import { slugify } from "@/lib/exportImage";
+
+// The on-disk format for a downloaded design. Versioned so we can migrate later.
+export interface DesignFile {
+  app: "sketchstack";
+  version: 1;
+  title: string;
+  nodes: SystemNode[];
+  edges: Edge[];
+}
+
+// Download the current diagram as a .json design file (round-trippable).
+export function downloadDesign(
+  title: string,
+  nodes: SystemNode[],
+  edges: Edge[],
+) {
+  const data: DesignFile = { app: "sketchstack", version: 1, title, nodes, edges };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${slugify(title)}.sketchstack.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// Parse imported text into a design, or throw if it's not a valid design file.
+export function parseDesign(text: string): {
+  title: string;
+  nodes: SystemNode[];
+  edges: Edge[];
+} {
+  const data = JSON.parse(text) as Partial<DesignFile>;
+  if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+    throw new Error("Not a Sketchstack design file.");
+  }
+  return {
+    title: typeof data.title === "string" ? data.title : "Imported design",
+    nodes: data.nodes as SystemNode[],
+    edges: data.edges as Edge[],
+  };
+}

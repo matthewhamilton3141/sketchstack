@@ -1,5 +1,5 @@
 import type { Edge } from "@xyflow/react";
-import { NODE_KINDS } from "@/lib/nodeTypes";
+import { CATEGORY_ORDER, NODE_KINDS } from "@/lib/nodeTypes";
 import type { SystemNode } from "@/components/SystemNode";
 
 // Turn the diagram into a clean, structured Markdown spec that a user can
@@ -10,29 +10,38 @@ export function generatePrompt(
   edges: Edge[],
   title = "Untitled system",
 ): string {
+  const heading = title.trim() || "Untitled system";
   if (nodes.length === 0) {
-    return "# " + title + "\n\n_Add some components to the canvas to generate a spec._\n";
+    return `# ${heading}\n\n_Add some components to the canvas to generate a spec._\n`;
   }
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const lines: string[] = [];
 
-  lines.push(`# System Design: ${title}`);
+  lines.push(`# System Design: ${heading}`);
   lines.push("");
 
-  // --- Components ---
+  // --- Components, grouped by category so related pieces read together ---
   lines.push("## Components");
-  for (const node of nodes) {
-    const spec = NODE_KINDS[node.data.kind];
-    const tech = node.data.tech?.trim();
-    const head = tech
-      ? `**${node.data.label}** (${spec.label} — ${tech})`
-      : `**${node.data.label}** (${spec.label})`;
-    lines.push(`- ${head}`);
-    const notes = node.data.notes?.trim();
-    if (notes) {
-      for (const line of notes.split("\n")) {
-        lines.push(`  - ${line}`);
+  for (const category of CATEGORY_ORDER) {
+    const inCategory = nodes.filter(
+      (n) => NODE_KINDS[n.data.kind].category === category,
+    );
+    if (inCategory.length === 0) continue;
+
+    lines.push(`\n### ${category}`);
+    for (const node of inCategory) {
+      const spec = NODE_KINDS[node.data.kind];
+      const tech = node.data.tech?.trim();
+      const head = tech
+        ? `**${node.data.label}** (${spec.label} — ${tech})`
+        : `**${node.data.label}** (${spec.label})`;
+      lines.push(`- ${head}`);
+      const notes = node.data.notes?.trim();
+      if (notes) {
+        for (const line of notes.split("\n")) {
+          lines.push(`  - ${line}`);
+        }
       }
     }
   }
@@ -54,6 +63,24 @@ export function generatePrompt(
     }
   }
   lines.push("");
+
+  // --- Flag any components that aren't wired to anything ---
+  const connectedIds = new Set<string>();
+  for (const edge of edges) {
+    connectedIds.add(edge.source);
+    connectedIds.add(edge.target);
+  }
+  const orphans = nodes.filter((n) => !connectedIds.has(n.id));
+  if (orphans.length > 0) {
+    lines.push("## Unconnected components");
+    lines.push(
+      "_These aren't wired to anything yet — decide how they fit or remove them:_",
+    );
+    for (const node of orphans) {
+      lines.push(`- ${node.data.label} (${NODE_KINDS[node.data.kind].label})`);
+    }
+    lines.push("");
+  }
 
   // --- Instructions for the agent ---
   lines.push("## Instructions");

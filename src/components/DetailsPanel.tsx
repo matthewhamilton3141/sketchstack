@@ -6,6 +6,7 @@ import type { SystemNode } from "@/components/SystemNode";
 interface DetailsPanelProps {
   node: SystemNode;
   onChange: (patch: Partial<SystemNodeData>) => void;
+  onDuplicate: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -17,6 +18,7 @@ const inputClass =
 export default function DetailsPanel({
   node,
   onChange,
+  onDuplicate,
   onDelete,
   onClose,
 }: DetailsPanelProps) {
@@ -90,12 +92,20 @@ export default function DetailsPanel({
         />
       </label>
 
-      <button
-        onClick={onDelete}
-        className="w-full rounded-md border border-red-500/40 px-2 py-1 text-sm text-red-500 hover:bg-red-500/10"
-      >
-        Delete node
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={onDuplicate}
+          className="flex-1 rounded-md border border-[var(--border)] px-2 py-1 text-sm text-[var(--text)] hover:bg-[var(--panel-2)]"
+        >
+          Duplicate
+        </button>
+        <button
+          onClick={onDelete}
+          className="flex-1 rounded-md border border-red-500/40 px-2 py-1 text-sm text-red-500 hover:bg-red-500/10"
+        >
+          Delete
+        </button>
+      </div>
     </div>
   );
 }

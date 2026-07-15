@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -17,12 +17,17 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import { Undo2, Redo2 } from "lucide-react";
 import SystemNodeComponent, { type SystemNode } from "@/components/SystemNode";
 import DetailsPanel from "@/components/DetailsPanel";
 import EdgePanel from "@/components/EdgePanel";
 import PromptPanel from "@/components/PromptPanel";
+import TemplatesModal from "@/components/TemplatesModal";
+import { type Template } from "@/lib/templates";
 import { useTheme } from "@/components/ThemeProvider";
 import { generatePrompt } from "@/lib/generatePrompt";
+import { exportCanvasImage, slugify } from "@/lib/exportImage";
+import { downloadDesign, parseDesign } from "@/lib/designFile";
 import {
   CATEGORY_ORDER,
   KINDS_BY_CATEGORY,
@@ -31,13 +36,15 @@ import {
   type SystemNodeData,
 } from "@/lib/nodeTypes";
 
-// Concrete colors for React Flow's SVG chrome (background dots + minimap),
-// which can't read CSS variables. Keyed by theme.
+// Concrete colors for React Flow's SVG chrome (background dots + minimap) and
+// image-export background, which can't read CSS variables. Keyed by theme.
 const CANVAS_COLORS = {
-  light: { grid: "#cbd5e1", miniBg: "#ffffff", miniMask: "rgba(15,23,42,0.06)" },
-  dusk: { grid: "#46536b", miniBg: "#374257", miniMask: "rgba(0,0,0,0.28)" },
-  dark: { grid: "#2a2a2a", miniBg: "#171717", miniMask: "rgba(0,0,0,0.5)" },
+  light: { grid: "#cbd5e1", miniBg: "#ffffff", miniMask: "rgba(15,23,42,0.06)", bg: "#eef2f6" },
+  dusk: { grid: "#46536b", miniBg: "#374257", miniMask: "rgba(0,0,0,0.28)", bg: "#2b3648" },
+  dark: { grid: "#2a2a2a", miniBg: "#171717", miniMask: "rgba(0,0,0,0.5)", bg: "#0a0a0a" },
 } as const;
+
+const DEFAULT_TITLE = "Untitled system";
 
 // Two starter nodes so the canvas isn't empty on first load.
 const initialNodes: SystemNode[] = [
@@ -74,6 +81,13 @@ export default function Canvas() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string | null>(null);
+  const [title, setTitle] = useState(DEFAULT_TITLE);
+  const [showTemplates, setShowTemplates] = useState(false);
+  // Undo/redo history. Each entry is a snapshot of the whole diagram.
+  const [past, setPast] = useState<{ nodes: SystemNode[]; edges: Edge[] }[]>([]);
+  const [future, setFuture] = useState<{ nodes: SystemNode[]; edges: Edge[] }[]>(
+    [],
+  );
   // Gates auto-save: we must not persist until we've loaded any saved diagram,
   // otherwise the first render would overwrite it with the default nodes.
   const [hydrated, setHydrated] = useState(false);
@@ -83,13 +97,45 @@ export default function Canvas() {
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null;
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null;
 
+  // Push the current diagram onto the undo stack (call BEFORE a mutation).
+  const takeSnapshot = useCallback(() => {
+    setPast((p) => [...p.slice(-49), { nodes, edges }]);
+    setFuture([]);
+  }, [nodes, edges]);
+
+  const undo = useCallback(() => {
+    setPast((p) => {
+      if (p.length === 0) return p;
+      const previous = p[p.length - 1];
+      setFuture((f) => [{ nodes, edges }, ...f]);
+      setNodes(previous.nodes);
+      setEdges(previous.edges);
+      return p.slice(0, -1);
+    });
+  }, [nodes, edges, setNodes, setEdges]);
+
+  const redo = useCallback(() => {
+    setFuture((f) => {
+      if (f.length === 0) return f;
+      const next = f[0];
+      setPast((p) => [...p, { nodes, edges }]);
+      setNodes(next.nodes);
+      setEdges(next.edges);
+      return f.slice(1);
+    });
+  }, [nodes, edges, setNodes, setEdges]);
+
   // Load any previously saved diagram once, on mount (browser-only).
   useEffect(() => {
     try {
       const raw =
         localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY);
       if (raw) {
-        const saved = JSON.parse(raw) as { nodes?: SystemNode[]; edges?: Edge[] };
+        const saved = JSON.parse(raw) as {
+          nodes?: SystemNode[];
+          edges?: Edge[];
+          title?: string;
+        };
         if (saved.nodes?.length) {
           setNodes(saved.nodes);
           // Make sure new node ids don't collide with restored ones.
@@ -100,6 +146,7 @@ export default function Canvas() {
           nextId = maxId + 1;
         }
         if (saved.edges) setEdges(saved.edges);
+        if (saved.title) setTitle(saved.title);
       }
     } catch {
       // Corrupt/blocked storage — fall back to the default diagram.
@@ -111,18 +158,19 @@ export default function Canvas() {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, title }));
     } catch {
       // Storage full or disabled — ignore; the app still works in-memory.
     }
-  }, [nodes, edges, hydrated]);
+  }, [nodes, edges, title, hydrated]);
 
   // Wipe the canvas and the saved copy.
   const clearCanvas = useCallback(() => {
+    takeSnapshot();
     setNodes([]);
     setEdges([]);
     setSelectedId(null);
-  }, [setNodes, setEdges]);
+  }, [takeSnapshot, setNodes, setEdges]);
 
   // Merge a patch into the selected node's data (used by the details panel).
   const updateNodeData = useCallback(
@@ -138,11 +186,34 @@ export default function Canvas() {
 
   const deleteNode = useCallback(
     (id: string) => {
+      takeSnapshot();
       setNodes((nds) => nds.filter((n) => n.id !== id));
       setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
       setSelectedId(null);
     },
-    [setNodes, setEdges],
+    [takeSnapshot, setNodes, setEdges],
+  );
+
+  // Copy a node next to itself and select the copy.
+  const duplicateNode = useCallback(
+    (id: string) => {
+      const source = nodes.find((n) => n.id === id);
+      if (!source) return;
+      takeSnapshot();
+      const copyId = String(nextId++);
+      setNodes((nds) => [
+        ...nds.map((n) => ({ ...n, selected: false })),
+        {
+          ...source,
+          id: copyId,
+          position: { x: source.position.x + 40, y: source.position.y + 40 },
+          selected: true,
+          data: { ...source.data },
+        },
+      ]);
+      setSelectedId(copyId);
+    },
+    [nodes, takeSnapshot, setNodes],
   );
 
   // Set/clear the label shown on a connection (feeds the generated prompt).
@@ -159,11 +230,54 @@ export default function Canvas() {
 
   const deleteEdge = useCallback(
     (id: string) => {
+      takeSnapshot();
       setEdges((eds) => eds.filter((e) => e.id !== id));
       setSelectedEdgeId(null);
     },
-    [setEdges],
+    [takeSnapshot, setEdges],
   );
+
+  // Delete whatever is currently multi-selected (nodes and/or edges) plus any
+  // edges attached to deleted nodes. Used by the Delete/Backspace shortcut.
+  const deleteSelected = useCallback(() => {
+    const selNodeIds = new Set(
+      nodes.filter((n) => n.selected).map((n) => n.id),
+    );
+    const selEdgeIds = new Set(
+      edges.filter((e) => e.selected).map((e) => e.id),
+    );
+    if (selNodeIds.size === 0 && selEdgeIds.size === 0) return;
+    takeSnapshot();
+    setNodes((nds) => nds.filter((n) => !selNodeIds.has(n.id)));
+    setEdges((eds) =>
+      eds.filter(
+        (e) =>
+          !selEdgeIds.has(e.id) &&
+          !selNodeIds.has(e.source) &&
+          !selNodeIds.has(e.target),
+      ),
+    );
+    setSelectedId(null);
+    setSelectedEdgeId(null);
+  }, [nodes, edges, takeSnapshot, setNodes, setEdges]);
+
+  // Duplicate all selected nodes (Cmd/Ctrl+D).
+  const duplicateSelected = useCallback(() => {
+    const selected = nodes.filter((n) => n.selected);
+    if (selected.length === 0) return;
+    takeSnapshot();
+    const copies = selected.map((n) => ({
+      ...n,
+      id: String(nextId++),
+      position: { x: n.position.x + 40, y: n.position.y + 40 },
+      selected: true,
+      data: { ...n.data },
+    }));
+    setNodes((nds) => [
+      ...nds.map((n) => ({ ...n, selected: false })),
+      ...copies,
+    ]);
+  }, [nodes, takeSnapshot, setNodes]);
 
   // Register our custom node under the "system" type. Memoized so React Flow
   // doesn't warn about a new object every render.
@@ -171,18 +285,105 @@ export default function Canvas() {
 
   // Fired when the user drags from one node's handle to another.
   const onConnect = useCallback(
-    (connection: Connection) =>
+    (connection: Connection) => {
+      takeSnapshot();
       setEdges((eds) =>
         addEdge(
           { ...connection, markerEnd: { type: MarkerType.ArrowClosed } },
           eds,
         ),
-      ),
-    [setEdges],
+      );
+    },
+    [takeSnapshot, setEdges],
   );
+
+  const handleExport = useCallback(
+    (format: "png" | "svg") =>
+      exportCanvasImage(nodes, format, colors.bg, slugify(title)),
+    [nodes, colors.bg, title],
+  );
+
+  // Replace the canvas with a starter template.
+  const applyTemplate = useCallback(
+    (template: Template) => {
+      takeSnapshot();
+      setNodes(template.nodes.map((n) => ({ ...n })));
+      setEdges(template.edges.map((e) => ({ ...e })));
+      setTitle(template.title);
+      nextId =
+        Math.max(
+          0,
+          ...template.nodes.map((n) => Number(n.id)).filter(Number.isFinite),
+        ) + 1;
+      setSelectedId(null);
+      setSelectedEdgeId(null);
+      setShowTemplates(false);
+    },
+    [takeSnapshot, setNodes, setEdges],
+  );
+
+  // Hidden file input drives "Import design".
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const onImportFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = ""; // let the same file be re-imported later
+      if (!file) return;
+      try {
+        const { title: t, nodes: n, edges: ed } = parseDesign(await file.text());
+        takeSnapshot();
+        setNodes(n);
+        setEdges(ed);
+        setTitle(t);
+        nextId =
+          Math.max(0, ...n.map((x) => Number(x.id)).filter(Number.isFinite)) + 1;
+        setSelectedId(null);
+        setSelectedEdgeId(null);
+      } catch {
+        alert("Couldn't import that file — it isn't a Sketchstack design.");
+      }
+    },
+    [takeSnapshot, setNodes, setEdges],
+  );
+
+  // Keyboard shortcuts: undo/redo, duplicate, delete. Ignored while typing in a
+  // field so native text editing (and text undo) keeps working.
+  useEffect(() => {
+    const isTyping = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return (
+        !!el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
+      );
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      const key = e.key.toLowerCase();
+      if (isTyping()) return;
+      if (mod && key === "z") {
+        e.preventDefault();
+        e.shiftKey ? redo() : undo();
+      } else if (mod && key === "y") {
+        e.preventDefault();
+        redo();
+      } else if (mod && key === "d") {
+        e.preventDefault();
+        duplicateSelected();
+      } else if (key === "delete" || key === "backspace") {
+        e.preventDefault();
+        deleteSelected();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo, duplicateSelected, deleteSelected]);
 
   const addNode = useCallback(
     (kind: NodeKind, label: string) => {
+      takeSnapshot();
       const id = String(nextId++);
       setNodes((nds) => [
         ...nds,
@@ -195,16 +396,25 @@ export default function Canvas() {
         },
       ]);
     },
-    [setNodes],
+    [takeSnapshot, setNodes],
   );
 
   return (
     <div className="relative h-full w-full bg-[var(--bg)]">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={onImportFile}
+      />
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         connectionMode={ConnectionMode.Loose}
+        deleteKeyCode={null}
+        onNodeDragStart={takeSnapshot}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -241,6 +451,12 @@ export default function Canvas() {
         />
         <Panel position="top-left">
           <div className="flex max-h-[calc(100vh-8rem)] w-56 flex-col overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--panel)] p-2 shadow-sm">
+            <button
+              onClick={() => setShowTemplates(true)}
+              className="mb-2 w-full rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-2 py-1.5 text-xs font-semibold text-[var(--text)] hover:bg-[var(--border)]"
+            >
+              ✨ Start from a template
+            </button>
             <div className="mb-1 flex items-center justify-between px-1">
               <span className="text-xs font-semibold text-[var(--muted)]">
                 Add a component
@@ -282,10 +498,70 @@ export default function Canvas() {
             ))}
           </div>
         </Panel>
+        <Panel position="top-center">
+          <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--panel)] px-2 py-1.5 shadow-sm">
+            <div className="flex items-center gap-1 border-r border-[var(--border)] pr-2">
+              <button
+                onClick={undo}
+                disabled={past.length === 0}
+                className="rounded-md p-1 text-[var(--text)] hover:bg-[var(--panel-2)] disabled:opacity-30"
+                title="Undo (⌘Z)"
+              >
+                <Undo2 size={15} />
+              </button>
+              <button
+                onClick={redo}
+                disabled={future.length === 0}
+                className="rounded-md p-1 text-[var(--text)] hover:bg-[var(--panel-2)] disabled:opacity-30"
+                title="Redo (⇧⌘Z)"
+              >
+                <Redo2 size={15} />
+              </button>
+            </div>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              placeholder={DEFAULT_TITLE}
+              aria-label="Diagram title"
+              className="w-56 bg-transparent px-1 text-sm font-semibold text-[var(--text)] outline-none"
+            />
+            <div className="flex items-center gap-1 border-l border-[var(--border)] pl-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
+                title="Import a .sketchstack.json design file"
+              >
+                Import
+              </button>
+              <button
+                onClick={() => downloadDesign(title, nodes, edges)}
+                className="rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
+                title="Download the editable design (.json)"
+              >
+                Design
+              </button>
+              <button
+                onClick={() => handleExport("png")}
+                className="rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
+                title="Download as a PNG image"
+              >
+                PNG
+              </button>
+              <button
+                onClick={() => handleExport("svg")}
+                className="rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
+                title="Download as an SVG image"
+              >
+                SVG
+              </button>
+            </div>
+          </div>
+        </Panel>
         <Panel position="bottom-center">
           <div className="flex flex-col items-center gap-1">
             <button
-              onClick={() => setPrompt(generatePrompt(nodes, edges))}
+              onClick={() => setPrompt(generatePrompt(nodes, edges, title))}
               className="rounded-full bg-[var(--btn-bg)] px-5 py-2 text-sm font-semibold text-[var(--btn-text)] shadow-md hover:bg-[var(--btn-hover)]"
             >
               Generate Prompt
@@ -300,6 +576,7 @@ export default function Canvas() {
             <DetailsPanel
               node={selectedNode}
               onChange={(patch) => updateNodeData(selectedNode.id, patch)}
+              onDuplicate={() => duplicateNode(selectedNode.id)}
               onDelete={() => deleteNode(selectedNode.id)}
               onClose={() => setSelectedId(null)}
             />
@@ -317,7 +594,17 @@ export default function Canvas() {
         ) : null}
       </ReactFlow>
       {prompt !== null ? (
-        <PromptPanel prompt={prompt} onClose={() => setPrompt(null)} />
+        <PromptPanel
+          prompt={prompt}
+          fileName={`${slugify(title)}-prompt`}
+          onClose={() => setPrompt(null)}
+        />
+      ) : null}
+      {showTemplates ? (
+        <TemplatesModal
+          onSelect={applyTemplate}
+          onClose={() => setShowTemplates(false)}
+        />
       ) : null}
     </div>
   );

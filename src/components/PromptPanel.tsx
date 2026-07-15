@@ -4,17 +4,32 @@ import { useState } from "react";
 
 interface PromptPanelProps {
   prompt: string;
+  fileName: string;
   onClose: () => void;
 }
 
-// Modal-style overlay showing the generated spec with a copy-to-clipboard button.
-export default function PromptPanel({ prompt, onClose }: PromptPanelProps) {
+// Modal-style overlay showing the generated spec with copy + download buttons.
+export default function PromptPanel({
+  prompt,
+  fileName,
+  onClose,
+}: PromptPanelProps) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
     await navigator.clipboard.writeText(prompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const download = () => {
+    const blob = new Blob([prompt], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${fileName}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -31,6 +46,12 @@ export default function PromptPanel({ prompt, onClose }: PromptPanelProps) {
             Generated prompt
           </span>
           <div className="flex items-center gap-2">
+            <button
+              onClick={download}
+              className="rounded-md border border-[var(--border)] px-3 py-1 text-sm font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
+            >
+              Download
+            </button>
             <button
               onClick={copy}
               className="rounded-md bg-[var(--btn-bg)] px-3 py-1 text-sm font-medium text-[var(--btn-text)] hover:bg-[var(--btn-hover)]"
