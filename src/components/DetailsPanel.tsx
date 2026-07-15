@@ -61,6 +61,32 @@ export default function DetailsPanel({
         />
       </label>
 
+      <div className="mb-2">
+        <span className="mb-0.5 block text-xs font-medium text-[var(--muted)]">
+          Color
+        </span>
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={node.data.color ?? spec.color}
+            onChange={(e) => onChange({ color: e.target.value })}
+            aria-label="Node color"
+            className="h-7 w-10 cursor-pointer rounded border border-[var(--border)] bg-transparent"
+          />
+          <span className="text-xs text-[var(--muted)]">
+            {node.data.color ?? spec.color}
+          </span>
+          {node.data.color ? (
+            <button
+              onClick={() => onChange({ color: undefined })}
+              className="ml-auto text-[10px] font-medium text-[var(--muted)] hover:text-[var(--text)]"
+            >
+              Reset
+            </button>
+          ) : null}
+        </div>
+      </div>
+
       <label className="mb-2 block">
         <span className="mb-0.5 block text-xs font-medium text-[var(--muted)]">
           Technology

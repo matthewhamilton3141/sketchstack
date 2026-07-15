@@ -667,9 +667,11 @@ export default function Canvas() {
           position="bottom-right"
           pannable
           zoomable
-          nodeColor={(n) =>
-            NODE_KINDS[(n.data as SystemNodeData).kind]?.color ?? "#94a3b8"
-          }
+          nodeColor={(n) => {
+            if (n.type === "note") return NOTE_COLOR;
+            const d = n.data as SystemNodeData;
+            return d.color ?? NODE_KINDS[d.kind]?.color ?? "#94a3b8";
+          }}
           nodeStrokeWidth={0}
           nodeBorderRadius={3}
           maskColor={colors.miniMask}

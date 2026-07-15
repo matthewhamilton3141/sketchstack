@@ -8,6 +8,7 @@ import {
   BarChart3,
   Bell,
   Bot,
+  Box,
   Clock,
   Cog,
   CreditCard,
@@ -51,13 +52,15 @@ export type NodeKind =
   | "vectordb"
   | "agent"
   | "pipeline"
-  | "warehouse";
+  | "warehouse"
+  | "custom";
 
 export type NodeCategory =
   | "Web/API core"
   | "Async & infra"
   | "External & auth"
-  | "AI / data";
+  | "AI / data"
+  | "Custom";
 
 export interface NodeKindSpec {
   kind: NodeKind;
@@ -98,6 +101,9 @@ export const NODE_KINDS: Record<NodeKind, NodeKindSpec> = {
   agent: { kind: "agent", label: "AI Agent", category: "AI / data", color: "#a855f7", icon: Bot, techHint: "Claude agent, LangGraph…" },
   pipeline: { kind: "pipeline", label: "Data Pipeline", category: "AI / data", color: "#84cc16", icon: Workflow, techHint: "Airflow, dbt…" },
   warehouse: { kind: "warehouse", label: "Data Warehouse", category: "AI / data", color: "#94a3b8", icon: Warehouse, techHint: "Snowflake, BigQuery…" },
+
+  // --- Custom (user-defined; recolor + rename it yourself) ---
+  custom: { kind: "custom", label: "Custom", category: "Custom", color: "#94a3b8", icon: Box, techHint: "anything…" },
 };
 
 // Ordered categories -> kinds, used to render the palette in groups.
@@ -106,6 +112,7 @@ export const CATEGORY_ORDER: NodeCategory[] = [
   "Async & infra",
   "External & auth",
   "AI / data",
+  "Custom",
 ];
 
 export const KINDS_BY_CATEGORY: Record<NodeCategory, NodeKindSpec[]> =
@@ -123,5 +130,6 @@ export interface SystemNodeData {
   label: string; // user-editable name for this specific node
   tech?: string; // chosen technology, e.g. "Postgres"
   notes?: string; // free-form details, feeds the generated prompt
+  color?: string; // optional per-node color override (hex); defaults to kind color
   [key: string]: unknown; // React Flow requires an index signature on node data
 }
