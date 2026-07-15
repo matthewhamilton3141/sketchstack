@@ -67,6 +67,17 @@ body {
 .react-flow__edge-path {
   stroke: var(--edge);
 }
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+/* Edge labels: match the panel surface + text color for every theme. */
+.react-flow__edge-textbg {
+  fill: var(--panel);
+}
+.react-flow__edge-text {
+  fill: var(--text);
+}
 .react-flow__attribution {
   background: transparent;
 }

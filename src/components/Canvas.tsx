@@ -19,6 +19,7 @@ import "@xyflow/react/dist/style.css";
 
 import SystemNodeComponent, { type SystemNode } from "@/components/SystemNode";
 import DetailsPanel from "@/components/DetailsPanel";
+import EdgePanel from "@/components/EdgePanel";
 import PromptPanel from "@/components/PromptPanel";
 import { useTheme } from "@/components/ThemeProvider";
 import { generatePrompt } from "@/lib/generatePrompt";
@@ -69,6 +70,7 @@ export default function Canvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState<SystemNode>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string | null>(null);
   // Gates auto-save: we must not persist until we've loaded any saved diagram,
   // otherwise the first render would overwrite it with the default nodes.
@@ -77,6 +79,7 @@ export default function Canvas() {
   const colors = CANVAS_COLORS[theme];
 
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null;
+  const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null;
 
   // Load any previously saved diagram once, on mount (browser-only).
   useEffect(() => {
@@ -139,6 +142,26 @@ export default function Canvas() {
     [setNodes, setEdges],
   );
 
+  // Set/clear the label shown on a connection (feeds the generated prompt).
+  const updateEdgeLabel = useCallback(
+    (id: string, label: string) => {
+      setEdges((eds) =>
+        eds.map((e) =>
+          e.id === id ? { ...e, label: label || undefined } : e,
+        ),
+      );
+    },
+    [setEdges],
+  );
+
+  const deleteEdge = useCallback(
+    (id: string) => {
+      setEdges((eds) => eds.filter((e) => e.id !== id));
+      setSelectedEdgeId(null);
+    },
+    [setEdges],
+  );
+
   // Register our custom node under the "system" type. Memoized so React Flow
   // doesn't warn about a new object every render.
   const nodeTypes = useMemo(() => ({ system: SystemNodeComponent }), []);
@@ -182,8 +205,18 @@ export default function Canvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeClick={(_, node) => setSelectedId(node.id)}
-        onPaneClick={() => setSelectedId(null)}
+        onNodeClick={(_, node) => {
+          setSelectedId(node.id);
+          setSelectedEdgeId(null);
+        }}
+        onEdgeClick={(_, edge) => {
+          setSelectedEdgeId(edge.id);
+          setSelectedId(null);
+        }}
+        onPaneClick={() => {
+          setSelectedId(null);
+          setSelectedEdgeId(null);
+        }}
         fitView
       >
         <Background color={colors.grid} gap={20} />
@@ -266,6 +299,16 @@ export default function Canvas() {
               onChange={(patch) => updateNodeData(selectedNode.id, patch)}
               onDelete={() => deleteNode(selectedNode.id)}
               onClose={() => setSelectedId(null)}
+            />
+          </Panel>
+        ) : null}
+        {selectedEdge ? (
+          <Panel position="top-right">
+            <EdgePanel
+              edge={selectedEdge}
+              onChange={(label) => updateEdgeLabel(selectedEdge.id, label)}
+              onDelete={() => deleteEdge(selectedEdge.id)}
+              onClose={() => setSelectedEdgeId(null)}
             />
           </Panel>
         ) : null}
