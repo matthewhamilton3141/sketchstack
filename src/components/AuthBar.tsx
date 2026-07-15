@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import AuthModal from "@/components/AuthModal";
 
 // Header widget: shows the signed-in email + sign out, or a sign-in button.
@@ -10,8 +10,11 @@ export default function AuthBar() {
   const { user, profile, loading } = useAuth();
   const [showModal, setShowModal] = useState(false);
 
+  // No auth UI at all if Supabase isn't configured (guest-only mode).
+  if (!isSupabaseConfigured) return null;
+
   if (loading) {
-    return <span className="text-sm text-zinc-400">…</span>;
+    return <span className="text-sm text-[var(--muted)]">…</span>;
   }
 
   if (user) {
