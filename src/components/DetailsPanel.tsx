@@ -10,6 +10,9 @@ interface DetailsPanelProps {
   onClose: () => void;
 }
 
+const inputClass =
+  "w-full rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-2 py-1 text-sm text-[var(--text)] outline-none focus:border-[var(--muted)]";
+
 // Side panel for editing the selected node's name, tech, and notes.
 export default function DetailsPanel({
   node,
@@ -18,19 +21,26 @@ export default function DetailsPanel({
   onClose,
 }: DetailsPanelProps) {
   const spec = NODE_KINDS[node.data.kind];
+  const Icon = spec.icon;
+  // Turn the tech hint ("Postgres, MongoDB…") into autocomplete suggestions.
+  const techSuggestions = spec.techHint
+    .replace(/…/g, "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   return (
-    <div className="w-72 rounded-lg border border-zinc-200 bg-white/95 p-3 shadow-md backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
+    <div className="w-72 rounded-lg border border-[var(--border)] bg-[var(--panel)] p-3 shadow-md">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={`h-2.5 w-2.5 rounded-full ${spec.dot}`} />
-          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          <Icon size={15} style={{ color: spec.color }} strokeWidth={2.25} />
+          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
             {spec.label}
           </span>
         </div>
         <button
           onClick={onClose}
-          className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+          className="text-[var(--muted)] hover:text-[var(--text)]"
           title="Close"
         >
           ✕
@@ -38,39 +48,51 @@ export default function DetailsPanel({
       </div>
 
       <label className="mb-2 block">
-        <span className="mb-0.5 block text-xs font-medium text-zinc-500">Name</span>
+        <span className="mb-0.5 block text-xs font-medium text-[var(--muted)]">
+          Name
+        </span>
         <input
           value={node.data.label}
           onChange={(e) => onChange({ label: e.target.value })}
           placeholder="e.g. Orders service"
-          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-600 dark:bg-zinc-800"
+          className={inputClass}
         />
       </label>
 
       <label className="mb-2 block">
-        <span className="mb-0.5 block text-xs font-medium text-zinc-500">Technology</span>
+        <span className="mb-0.5 block text-xs font-medium text-[var(--muted)]">
+          Technology
+        </span>
         <input
           value={node.data.tech ?? ""}
           onChange={(e) => onChange({ tech: e.target.value })}
           placeholder={spec.techHint}
-          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-600 dark:bg-zinc-800"
+          list={`tech-${node.data.kind}`}
+          className={inputClass}
         />
+        <datalist id={`tech-${node.data.kind}`}>
+          {techSuggestions.map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
       </label>
 
       <label className="mb-3 block">
-        <span className="mb-0.5 block text-xs font-medium text-zinc-500">Notes</span>
+        <span className="mb-0.5 block text-xs font-medium text-[var(--muted)]">
+          Notes
+        </span>
         <textarea
           value={node.data.notes ?? ""}
           onChange={(e) => onChange({ notes: e.target.value })}
           placeholder="Responsibilities, key endpoints, constraints…"
           rows={4}
-          className="w-full resize-none rounded-md border border-zinc-300 px-2 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-600 dark:bg-zinc-800"
+          className={`${inputClass} resize-none`}
         />
       </label>
 
       <button
         onClick={onDelete}
-        className="w-full rounded-md border border-red-200 px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
+        className="w-full rounded-md border border-red-500/40 px-2 py-1 text-sm text-red-500 hover:bg-red-500/10"
       >
         Delete node
       </button>

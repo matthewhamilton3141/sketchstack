@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# sysdesign
 
-## Getting Started
+A visual systems-design tool that turns a diagram into a structured prompt for
+your AI coding agent. Drag typed components onto a canvas, wire them together,
+describe each one, then generate a clean spec you can paste into Claude Code,
+Cursor, or any agent — so you plan by *seeing* how the system connects instead
+of writing plain text.
 
-First, run the development server:
+## Features
+
+- **Interactive canvas** (React Flow) — drag nodes, connect any side to any
+  side, zoom, pan, minimap.
+- **22 typed components** across four categories (Web/API core, Async & infra,
+  External & auth, AI / data), each with its own color and SVG icon.
+- **Editable node details** — name, technology (with suggestions), and notes.
+- **Generate Prompt** — walks the graph and emits a structured Markdown spec
+  (components, tech, connections, data flow) with one-click copy.
+- **Auto-save** to the browser (localStorage) so diagrams survive a refresh.
+- **Accounts** — passwordless magic-link sign-in via Supabase, with a one-time
+  username prompt.
+- **Themes** — light, dusk (bluish-grey), and dark, remembered per browser.
+
+## Tech stack
+
+- [Next.js](https://nextjs.org) (App Router) + TypeScript + Tailwind CSS
+- [React Flow](https://reactflow.dev) (`@xyflow/react`) for the canvas
+- [Supabase](https://supabase.com) for auth + Postgres storage
+- [lucide-react](https://lucide.dev) for icons
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open the URL printed in the terminal (http://localhost:3000, or the next
+free port such as 3001).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Create a `.env.local` (gitignored) with your Supabase project credentials:
 
-## Learn More
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-publishable-anon-key>
+```
 
-To learn more about Next.js, take a look at the following resources:
+For magic-link sign-in to redirect back correctly, add your local URL (e.g.
+`http://localhost:3001`) to **Authentication → URL Configuration** in the
+Supabase dashboard.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Database
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Run the SQL in [`supabase/profiles.sql`](supabase/profiles.sql) in the Supabase
+SQL Editor to create the `profiles` table (usernames) with row-level security.
 
-## Deploy on Vercel
+## Project layout
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+src/
+  app/            Next.js App Router (layout, page, global styles)
+  components/     Canvas, nodes, panels, auth, theming
+  lib/            nodeTypes registry, prompt generator, Supabase client
+supabase/         SQL schema
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Roadmap
+
+- Cloud-saved diagrams (up to 5 named diagrams per account, overflow local)
+- Editable edge labels for richer data-flow in the generated prompt
+- Custom SMTP for reliable auth emails

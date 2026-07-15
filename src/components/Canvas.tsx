@@ -11,6 +11,7 @@ import {
   useNodesState,
   useEdgesState,
   MarkerType,
+  ConnectionMode,
   type Edge,
   type Connection,
 } from "@xyflow/react";
@@ -19,13 +20,23 @@ import "@xyflow/react/dist/style.css";
 import SystemNodeComponent, { type SystemNode } from "@/components/SystemNode";
 import DetailsPanel from "@/components/DetailsPanel";
 import PromptPanel from "@/components/PromptPanel";
+import { useTheme } from "@/components/ThemeProvider";
 import { generatePrompt } from "@/lib/generatePrompt";
 import {
   CATEGORY_ORDER,
   KINDS_BY_CATEGORY,
+  NODE_KINDS,
   type NodeKind,
   type SystemNodeData,
 } from "@/lib/nodeTypes";
+
+// Concrete colors for React Flow's SVG chrome (background dots + minimap),
+// which can't read CSS variables. Keyed by theme.
+const CANVAS_COLORS = {
+  light: { grid: "#cbd5e1", miniBg: "#ffffff", miniMask: "rgba(15,23,42,0.06)" },
+  dusk: { grid: "#46536b", miniBg: "#374257", miniMask: "rgba(0,0,0,0.28)" },
+  dark: { grid: "#2a2a2a", miniBg: "#171717", miniMask: "rgba(0,0,0,0.5)" },
+} as const;
 
 // Two starter nodes so the canvas isn't empty on first load.
 const initialNodes: SystemNode[] = [
@@ -62,6 +73,8 @@ export default function Canvas() {
   // Gates auto-save: we must not persist until we've loaded any saved diagram,
   // otherwise the first render would overwrite it with the default nodes.
   const [hydrated, setHydrated] = useState(false);
+  const { theme } = useTheme();
+  const colors = CANVAS_COLORS[theme];
 
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null;
 
@@ -160,11 +173,12 @@ export default function Canvas() {
   );
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full bg-[var(--bg)]">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        connectionMode={ConnectionMode.Loose}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -172,18 +186,32 @@ export default function Canvas() {
         onPaneClick={() => setSelectedId(null)}
         fitView
       >
-        <Background />
+        <Background color={colors.grid} gap={20} />
         <Controls />
-        <MiniMap />
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(n) =>
+            NODE_KINDS[(n.data as SystemNodeData).kind]?.color ?? "#94a3b8"
+          }
+          nodeStrokeWidth={0}
+          nodeBorderRadius={3}
+          maskColor={colors.miniMask}
+          style={{
+            backgroundColor: colors.miniBg,
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+          }}
+        />
         <Panel position="top-left">
-          <div className="w-52 rounded-lg border border-zinc-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/90">
+          <div className="flex max-h-[calc(100vh-8rem)] w-56 flex-col overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--panel)] p-2 shadow-sm">
             <div className="mb-1 flex items-center justify-between px-1">
-              <span className="text-xs font-semibold text-zinc-500">
+              <span className="text-xs font-semibold text-[var(--muted)]">
                 Add a component
               </span>
               <button
                 onClick={clearCanvas}
-                className="text-[10px] font-medium text-zinc-400 hover:text-red-500"
+                className="text-[10px] font-medium text-[var(--muted)] hover:text-red-500"
                 title="Clear the canvas"
               >
                 Clear
@@ -191,21 +219,28 @@ export default function Canvas() {
             </div>
             {CATEGORY_ORDER.map((category) => (
               <div key={category} className="mb-1.5">
-                <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)] opacity-70">
                   {category}
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {KINDS_BY_CATEGORY[category].map((spec) => (
-                    <button
-                      key={spec.kind}
-                      onClick={() => addNode(spec.kind, spec.label)}
-                      className={`flex items-center gap-1 rounded-md border px-1.5 py-1 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800 ${spec.accent}`}
-                      title={`Add ${spec.label}`}
-                    >
-                      <span className={`h-2 w-2 rounded-full ${spec.dot}`} />
-                      {spec.label}
-                    </button>
-                  ))}
+                  {KINDS_BY_CATEGORY[category].map((spec) => {
+                    const Icon = spec.icon;
+                    return (
+                      <button
+                        key={spec.kind}
+                        onClick={() => addNode(spec.kind, spec.label)}
+                        style={{
+                          borderColor: spec.color,
+                          backgroundColor: `${spec.color}1a`,
+                        }}
+                        className="flex items-center gap-1 rounded-md border px-1.5 py-1 text-xs font-medium text-[var(--text)] transition-transform hover:scale-[1.03]"
+                        title={`Add ${spec.label}`}
+                      >
+                        <Icon size={13} style={{ color: spec.color }} strokeWidth={2.25} />
+                        {spec.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -215,11 +250,13 @@ export default function Canvas() {
           <div className="flex flex-col items-center gap-1">
             <button
               onClick={() => setPrompt(generatePrompt(nodes, edges))}
-              className="rounded-full bg-black px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-zinc-800"
+              className="rounded-full bg-[var(--btn-bg)] px-5 py-2 text-sm font-semibold text-[var(--btn-text)] shadow-md hover:bg-[var(--btn-hover)]"
             >
               Generate Prompt
             </button>
-            <span className="text-[10px] text-zinc-400">Auto-saved to this browser</span>
+            <span className="text-[10px] text-[var(--muted)]">
+              Auto-saved to this browser
+            </span>
           </div>
         </Panel>
         {selectedNode ? (

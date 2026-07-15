@@ -1,26 +1,75 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ---- Theme tokens. Switched via data-theme on <html>. ---- */
+:root,
+[data-theme="light"] {
+  --bg: #eef2f6;
+  --panel: #ffffff;
+  --panel-2: #f1f5f9;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+  --btn-bg: #0f172a;
+  --btn-text: #ffffff;
+  --btn-hover: #1e293b;
+  --edge: #94a3b8;
+}
+
+[data-theme="dusk"] {
+  --bg: #2b3648;
+  --panel: #374257;
+  --panel-2: #414e66;
+  --border: #4c5a76;
+  --text: #e6ecf5;
+  --muted: #9fb0c8;
+  --btn-bg: #e6ecf5;
+  --btn-text: #1e293b;
+  --btn-hover: #cbd5e1;
+  --edge: #8ea3c0;
+}
+
+[data-theme="dark"] {
+  --bg: #0a0a0a;
+  --panel: #171717;
+  --panel-2: #262626;
+  --border: #2a2a2a;
+  --text: #ededed;
+  --muted: #a1a1aa;
+  --btn-bg: #fafafa;
+  --btn-text: #171717;
+  --btn-hover: #e4e4e7;
+  --edge: #52525b;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* ---- React Flow chrome themed via tokens ---- */
+.react-flow__controls-button {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.react-flow__controls-button:hover {
+  background: var(--panel-2);
+}
+.react-flow__controls-button svg {
+  fill: var(--text);
+}
+.react-flow__edge-path {
+  stroke: var(--edge);
+}
+.react-flow__attribution {
+  background: transparent;
+}
+.react-flow__attribution a {
+  color: var(--muted);
 }

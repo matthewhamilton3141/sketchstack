@@ -23,28 +23,30 @@ export default function PromptPanel({ prompt, onClose }: PromptPanelProps) {
       onClick={onClose}
     >
       <div
-        className="flex max-h-full w-full max-w-2xl flex-col rounded-xl bg-white shadow-xl dark:bg-zinc-900"
+        className="flex max-h-full w-full max-w-2xl flex-col rounded-xl border border-[var(--border)] bg-[var(--panel)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">
-          <span className="text-sm font-semibold">Generated prompt</span>
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+          <span className="text-sm font-semibold text-[var(--text)]">
+            Generated prompt
+          </span>
           <div className="flex items-center gap-2">
             <button
               onClick={copy}
-              className="rounded-md bg-black px-3 py-1 text-sm font-medium text-white hover:bg-zinc-800"
+              className="rounded-md bg-[var(--btn-bg)] px-3 py-1 text-sm font-medium text-[var(--btn-text)] hover:bg-[var(--btn-hover)]"
             >
               {copied ? "Copied!" : "Copy"}
             </button>
             <button
               onClick={onClose}
-              className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+              className="text-[var(--muted)] hover:text-[var(--text)]"
               title="Close"
             >
               ✕
             </button>
           </div>
         </div>
-        <pre className="overflow-auto whitespace-pre-wrap p-4 text-sm text-zinc-800 dark:text-zinc-200">
+        <pre className="overflow-auto whitespace-pre-wrap p-4 text-sm text-[var(--text)]">
           {prompt}
         </pre>
       </div>

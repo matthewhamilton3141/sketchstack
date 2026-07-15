@@ -6,35 +6,40 @@ import { NODE_KINDS, type SystemNodeData } from "@/lib/nodeTypes";
 
 export type SystemNode = Node<SystemNodeData, "system">;
 
-// A single system component on the canvas: colored card + type badge + handles.
+const handleClass = "!h-2.5 !w-2.5 !border-2 !border-[var(--panel)]";
+
+// A single system component on the canvas: colored card + icon + handles.
 function SystemNodeComponent({ data, selected }: NodeProps<SystemNode>) {
   const spec = NODE_KINDS[data.kind];
+  const Icon = spec.icon;
 
   return (
     <div
-      className={`min-w-[160px] rounded-lg border-2 bg-white px-3 py-2 shadow-sm dark:bg-zinc-900 ${spec.accent} ${
-        selected ? "ring-2 ring-black/40 dark:ring-white/40" : ""
+      style={{ borderColor: spec.color }}
+      className={`min-w-[168px] rounded-lg border-2 bg-[var(--panel)] px-3 py-2 shadow-sm ${
+        selected ? "ring-2 ring-[var(--muted)]" : ""
       }`}
     >
-      {/* Connection handles: target on top/left, source on bottom/right. */}
-      <Handle type="target" position={Position.Top} className="!bg-zinc-400" />
-      <Handle type="target" position={Position.Left} className="!bg-zinc-400" />
+      {/* One handle per side, each with a UNIQUE id. With ConnectionMode.Loose
+          (set on the canvas) any dot can start or receive a connection. */}
+      <Handle id="top" type="target" position={Position.Top} style={{ background: spec.color }} className={handleClass} />
+      <Handle id="left" type="target" position={Position.Left} style={{ background: spec.color }} className={handleClass} />
 
-      <div className="flex items-center gap-2">
-        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${spec.dot}`} />
-        <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+      <div className="flex items-center gap-1.5">
+        <Icon size={14} style={{ color: spec.color }} strokeWidth={2.25} />
+        <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">
           {spec.label}
         </span>
       </div>
-      <div className="mt-0.5 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+      <div className="mt-0.5 text-sm font-semibold text-[var(--text)]">
         {data.label}
       </div>
       {data.tech ? (
-        <div className="mt-0.5 text-xs text-zinc-500">{data.tech}</div>
+        <div className="mt-0.5 text-xs text-[var(--muted)]">{data.tech}</div>
       ) : null}
 
-      <Handle type="source" position={Position.Bottom} className="!bg-zinc-400" />
-      <Handle type="source" position={Position.Right} className="!bg-zinc-400" />
+      <Handle id="bottom" type="source" position={Position.Bottom} style={{ background: spec.color }} className={handleClass} />
+      <Handle id="right" type="source" position={Position.Right} style={{ background: spec.color }} className={handleClass} />
     </div>
   );
 }
