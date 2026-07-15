@@ -97,9 +97,13 @@ const initialEdges: Edge[] = [
   { id: "e1-2", source: "1", target: "2", markerEnd: { type: MarkerType.ArrowClosed } },
 ];
 
-// Every new node/edge needs a unique id; simple counters are enough for now.
-let nextId = 3;
-let nextEdgeId = 1000;
+// Globally-unique id for new nodes/edges. Avoids the counter-collision class of
+// bug (e.g. dev hot-reload resetting a counter while node state persists, which
+// made a "new" node reuse an existing id and replace it).
+const genId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const DRAG_TYPE = "application/sketchstack-template";
 const DRAG_NODE_TYPE = "application/sketchstack-node";
@@ -199,12 +203,6 @@ export default function Canvas() {
         };
         if (saved.nodes?.length) {
           setNodes(saved.nodes);
-          // Make sure new node ids don't collide with restored ones.
-          const maxId = Math.max(
-            0,
-            ...saved.nodes.map((n) => Number(n.id)).filter(Number.isFinite),
-          );
-          nextId = maxId + 1;
         }
         if (saved.edges) setEdges(saved.edges);
         if (saved.title) setTitle(saved.title);
@@ -299,7 +297,7 @@ export default function Canvas() {
       const source = nodes.find((n) => n.id === id);
       if (!source) return;
       takeSnapshot();
-      const copyId = String(nextId++);
+      const copyId = genId();
       setNodes((nds) => [
         ...nds.map((n) => ({ ...n, selected: false })),
         {
@@ -369,7 +367,7 @@ export default function Canvas() {
       (n) =>
         ({
           ...n,
-          id: String(nextId++),
+          id: genId(),
           position: { x: n.position.x + 40, y: n.position.y + 40 },
           selected: true,
           data: structuredClone(n.data),
@@ -430,7 +428,7 @@ export default function Canvas() {
       // Remap template ids to fresh ids so repeated adds never collide.
       const idMap = new Map<string, string>();
       const newNodes: SystemNode[] = template.nodes.map((n) => {
-        const id = String(nextId++);
+        const id = genId();
         idMap.set(n.id, id);
         return {
           ...n,
@@ -445,7 +443,7 @@ export default function Canvas() {
       });
       const newEdges: Edge[] = template.edges.map((e) => ({
         ...e,
-        id: `e${nextEdgeId++}`,
+        id: genId(),
         source: idMap.get(e.source)!,
         target: idMap.get(e.target)!,
       }));
@@ -484,7 +482,7 @@ export default function Canvas() {
   const addNode = useCallback(
     (kind: NodeKind, label: string, position?: { x: number; y: number }) => {
       takeSnapshot();
-      const id = String(nextId++);
+      const id = genId();
       setNodes((nds) => [
         ...nds.map((n) => ({ ...n, selected: false })),
         {
@@ -509,7 +507,7 @@ export default function Canvas() {
   const addNote = useCallback(
     (position?: { x: number; y: number }) => {
       takeSnapshot();
-      const id = String(nextId++);
+      const id = genId();
       const note: NoteNode = {
         id,
         type: "note",
@@ -571,8 +569,6 @@ export default function Canvas() {
         setNodes(n);
         setEdges(ed);
         setTitle(t);
-        nextId =
-          Math.max(0, ...n.map((x) => Number(x.id)).filter(Number.isFinite)) + 1;
         setSelectedId(null);
         setSelectedEdgeId(null);
       } catch {
