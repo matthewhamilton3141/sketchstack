@@ -95,6 +95,7 @@ let nextId = 3;
 let nextEdgeId = 1000;
 
 const DRAG_TYPE = "application/sketchstack-template";
+const DRAG_NODE_TYPE = "application/sketchstack-node";
 
 // Align toolbar actions (shown when 2+ nodes are selected).
 const ALIGN_ACTIONS: { mode: AlignMode; Icon: typeof Undo2; label: string }[] = [
@@ -449,20 +450,27 @@ export default function Canvas() {
     minimapTimer.current = setTimeout(() => setMinimapVisible(false), 1200);
   }, []);
 
-  // Drop a dragged template onto the canvas at the cursor position.
+  // Drop a dragged node type or template onto the canvas at the cursor.
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
-      const id = event.dataTransfer.getData(DRAG_TYPE);
-      const template = TEMPLATES.find((t) => t.id === id);
-      if (!template || !rfInstance) return;
+      if (!rfInstance) return;
       const position = rfInstance.screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
-      addTemplate(template, position);
+
+      const kind = event.dataTransfer.getData(DRAG_NODE_TYPE) as NodeKind;
+      if (kind && NODE_KINDS[kind]) {
+        addNode(kind, NODE_KINDS[kind].label, position);
+        return;
+      }
+      const template = TEMPLATES.find(
+        (t) => t.id === event.dataTransfer.getData(DRAG_TYPE),
+      );
+      if (template) addTemplate(template, position);
     },
-    [rfInstance, addTemplate],
+    [rfInstance, addNode, addTemplate],
   );
 
   // Hidden file input drives "Import design".
@@ -525,19 +533,25 @@ export default function Canvas() {
   }, [undo, redo, duplicateSelected, deleteSelected]);
 
   const addNode = useCallback(
-    (kind: NodeKind, label: string) => {
+    (kind: NodeKind, label: string, position?: { x: number; y: number }) => {
       takeSnapshot();
       const id = String(nextId++);
       setNodes((nds) => [
-        ...nds,
+        ...nds.map((n) => ({ ...n, selected: false })),
         {
           id,
           type: "system",
-          // Drop it at a slightly random spot so nodes don't stack exactly.
-          position: { x: 120 + Math.random() * 240, y: 120 + Math.random() * 240 },
+          // Use the drop position if given, else a slightly random spot so
+          // click-added nodes don't stack exactly.
+          position: position ?? {
+            x: 120 + Math.random() * 240,
+            y: 120 + Math.random() * 240,
+          },
           data: { kind, label },
+          selected: true,
         },
       ]);
+      setSelectedId(id);
     },
     [takeSnapshot, setNodes],
   );
@@ -557,6 +571,7 @@ export default function Canvas() {
         nodeTypes={nodeTypes}
         connectionMode={ConnectionMode.Loose}
         selectionMode={SelectionMode.Partial}
+        attributionPosition="bottom-left"
         deleteKeyCode={null}
         onNodeDragStart={takeSnapshot}
         onInit={setRfInstance}
@@ -587,8 +602,9 @@ export default function Canvas() {
       >
         <Background color={colors.grid} gap={20} />
         <HelperLines horizontal={helperLineH} vertical={helperLineV} />
-        <Controls />
+        <Controls position="bottom-right" showInteractive={false} />
         <MiniMap
+          position="bottom-right"
           pannable
           zoomable
           nodeColor={(n) =>
@@ -601,6 +617,7 @@ export default function Canvas() {
             backgroundColor: colors.miniBg,
             border: "1px solid var(--border)",
             borderRadius: 8,
+            bottom: 52,
             opacity: minimapVisible ? 1 : 0,
             transition: "opacity 250ms ease",
             pointerEvents: minimapVisible ? "auto" : "none",
@@ -653,13 +670,18 @@ export default function Canvas() {
                     return (
                       <button
                         key={spec.kind}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData(DRAG_NODE_TYPE, spec.kind);
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
                         onClick={() => addNode(spec.kind, spec.label)}
                         style={{
                           borderColor: spec.color,
                           backgroundColor: `${spec.color}1a`,
                         }}
-                        className="flex items-center gap-1 rounded-md border px-1.5 py-1 text-xs font-medium text-[var(--text)] transition-transform hover:scale-[1.03]"
-                        title={`Add ${spec.label}`}
+                        className="flex cursor-grab items-center gap-1 rounded-md border px-1.5 py-1 text-xs font-medium text-[var(--text)] transition-transform hover:scale-[1.03] active:cursor-grabbing"
+                        title={`Click to add or drag onto canvas — ${spec.label}`}
                       >
                         <Icon size={13} style={{ color: spec.color }} strokeWidth={2.25} />
                         {spec.label}
