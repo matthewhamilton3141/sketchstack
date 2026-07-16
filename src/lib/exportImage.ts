@@ -1,10 +1,26 @@
 import { toPng, toSvg } from "html-to-image";
 import { getNodesBounds, getViewportForBounds, type Node } from "@xyflow/react";
 
-// Render the current diagram to an image and trigger a download. Works by
-// snapshotting React Flow's viewport element, framed to fit all nodes. Exports
-// are always rendered on the light theme so text and edges stay readable
-// regardless of the current UI theme (dark-on-dark exported badly).
+// Concrete light-theme values injected onto the captured element so every
+// var()-based color resolves in html-to-image's detached clone (otherwise SVG
+// edge/label fills fall back to black — the "black blocks" bug). Includes both
+// our tokens and React Flow's internal edge tokens.
+const EXPORT_VARS: Record<string, string> = {
+  "--bg": "#ffffff",
+  "--panel": "#ffffff",
+  "--panel-2": "#f1f5f9",
+  "--border": "#e2e8f0",
+  "--text": "#0f172a",
+  "--muted": "#64748b",
+  "--edge": "#64748b",
+  "--xy-edge-stroke-default": "#64748b",
+  "--xy-edge-stroke": "#64748b",
+  "--xy-edge-stroke-selected-default": "#64748b",
+};
+
+// Render the current diagram to an image and download it. Snapshots React
+// Flow's viewport element, framed to fit all nodes. Always rendered light so
+// text/edges stay readable regardless of the current UI theme.
 export async function exportCanvasImage(
   nodes: Node[],
   format: "png" | "svg",
@@ -22,11 +38,17 @@ export async function exportCanvasImage(
   const prevTheme = root.dataset.theme;
   root.dataset.theme = "light";
 
+  // Inject concrete vars on the cloned root so var() references resolve.
+  const restore: [string, string][] = [];
+  for (const [k, v] of Object.entries(EXPORT_VARS)) {
+    restore.push([k, viewportEl.style.getPropertyValue(k)]);
+    viewportEl.style.setProperty(k, v);
+  }
+
   try {
     const width = 1400;
     const height = 900;
     const bounds = getNodesBounds(nodes);
-    // Frame all nodes into the fixed image size with a little padding.
     const viewport = getViewportForBounds(bounds, width, height, 0.4, 2, 0.15);
 
     const options = {
@@ -54,11 +76,12 @@ export async function exportCanvasImage(
     link.click();
   } catch (err) {
     console.error("Image export failed:", err);
-    alert(
-      "Sorry — exporting the image failed. Please try again. (You can use " +
-        "the Design download as a fallback.)",
-    );
+    alert("Sorry — exporting the image failed. Please try again.");
   } finally {
+    for (const [k, v] of restore) {
+      if (v) viewportEl.style.setProperty(k, v);
+      else viewportEl.style.removeProperty(k);
+    }
     root.dataset.theme = prevTheme;
   }
 }
