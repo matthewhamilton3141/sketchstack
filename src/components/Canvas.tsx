@@ -42,6 +42,8 @@ import {
   AlignVerticalDistributeCenter,
   StickyNote,
   Cloud,
+  Share2,
+  GraduationCap,
 } from "lucide-react";
 import SystemNodeComponent, { type SystemNode } from "@/components/SystemNode";
 import NoteNodeComponent, {
@@ -57,6 +59,8 @@ import NoteEditorPanel from "@/components/NoteEditorPanel";
 import EdgePanel from "@/components/EdgePanel";
 import PromptPanel from "@/components/PromptPanel";
 import CloudPanel from "@/components/CloudPanel";
+import LearnPanel from "@/components/LearnPanel";
+import NodePaletteItem from "@/components/NodePaletteItem";
 import { TEMPLATES, type Template } from "@/lib/templates";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAuth } from "@/components/AuthProvider";
@@ -65,14 +69,17 @@ import {
   updateDiagram,
   loadDiagram,
   deleteDiagram,
+  setPublic,
   type DiagramData,
 } from "@/lib/cloudDiagrams";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import AuthModal from "@/components/AuthModal";
 import {
   DIAGRAM_STORAGE_KEY as STORAGE_KEY,
   LEGACY_DIAGRAM_STORAGE_KEY as LEGACY_KEY,
 } from "@/lib/storageKeys";
 import { generatePrompt } from "@/lib/generatePrompt";
-import { exportCanvasImage, slugify } from "@/lib/exportImage";
+import { slugify } from "@/lib/slugify";
 import { downloadDesign, parseDesign } from "@/lib/designFile";
 import {
   NODE_KINDS,
@@ -152,6 +159,12 @@ export default function Canvas() {
   const { user } = useAuth();
   const [currentCloudId, setCurrentCloudId] = useState<string | null>(null);
   const [showCloud, setShowCloud] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [showLearn, setShowLearn] = useState(false);
+  // Share button feedback: idle → sharing → copied (or error), auto-resets.
+  const [shareState, setShareState] = useState<
+    "idle" | "sharing" | "copied" | "error"
+  >("idle");
   const [rfInstance, setRfInstance] =
     useState<ReactFlowInstance<AppNode, Edge> | null>(null);
   // Minimap only shows while the user is moving around, then fades out.
@@ -297,6 +310,37 @@ export default function Canvas() {
     },
     [user, nodes, edges, title, mode, currentCloudId],
   );
+
+  // One-click share: ensure the diagram is saved to the cloud, mark it public,
+  // and copy its /d link. Prompts sign-in first if needed. This is the primary
+  // way to show a diagram to others now that image export is gone.
+  const handleShare = useCallback(async () => {
+    if (!user) {
+      setShowAuth(true);
+      return;
+    }
+    setShareState("sharing");
+    try {
+      const data: DiagramData = { nodes, edges };
+      const name = title.trim() || "Untitled";
+      let id = currentCloudId;
+      if (id) {
+        await updateDiagram(id, name, mode, data);
+      } else {
+        id = await createDiagram(user.id, name, mode, data);
+        setCurrentCloudId(id);
+      }
+      await setPublic(id, true);
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/d/${id}`,
+      );
+      setShareState("copied");
+      setTimeout(() => setShareState("idle"), 2000);
+    } catch {
+      setShareState("error");
+      setTimeout(() => setShareState("idle"), 2500);
+    }
+  }, [user, nodes, edges, title, mode, currentCloudId]);
 
   const openFromCloud = useCallback(
     async (id: string) => {
@@ -472,11 +516,6 @@ export default function Canvas() {
       setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds));
     },
     [takeSnapshot, setEdges],
-  );
-
-  const handleExport = useCallback(
-    (format: "png" | "svg") => exportCanvasImage(nodes, format, slugify(title)),
-    [nodes, title],
   );
 
   // Merge a template into the current diagram (compose multiple templates).
@@ -830,29 +869,17 @@ export default function Canvas() {
                   {category}
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {kinds.map((spec) => {
-                    const Icon = spec.icon;
-                    return (
-                      <button
-                        key={spec.kind}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData(DRAG_NODE_TYPE, spec.kind);
-                          e.dataTransfer.effectAllowed = "copy";
-                        }}
-                        onClick={() => addNode(spec.kind, spec.label)}
-                        style={{
-                          borderColor: spec.color,
-                          backgroundColor: `${spec.color}1a`,
-                        }}
-                        className="flex cursor-grab items-center gap-1 rounded-md border px-1.5 py-1 text-xs font-medium text-[var(--text)] transition-transform hover:scale-[1.03] active:cursor-grabbing"
-                        title={`Click to add or drag onto canvas — ${spec.label}`}
-                      >
-                        <Icon size={13} style={{ color: spec.color }} strokeWidth={2.25} />
-                        {spec.label}
-                      </button>
-                    );
-                  })}
+                  {kinds.map((spec) => (
+                    <NodePaletteItem
+                      key={spec.kind}
+                      spec={spec}
+                      onAdd={() => addNode(spec.kind, spec.label)}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(DRAG_NODE_TYPE, spec.kind);
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                    />
+                  ))}
                 </div>
               </div>
             ))}
@@ -888,6 +915,13 @@ export default function Canvas() {
             />
             <div className="flex items-center gap-1 border-l border-[var(--border)] pl-2">
               <button
+                onClick={() => setShowLearn(true)}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
+                title="Learn how to build a system design"
+              >
+                <GraduationCap size={14} /> Learn
+              </button>
+              <button
                 onClick={() => fileInputRef.current?.click()}
                 className="rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
                 title="Import a .sketchstack.json design file"
@@ -901,20 +935,6 @@ export default function Canvas() {
               >
                 Design
               </button>
-              <button
-                onClick={() => handleExport("png")}
-                className="rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
-                title="Download as a PNG image"
-              >
-                PNG
-              </button>
-              <button
-                onClick={() => handleExport("svg")}
-                className="rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
-                title="Download as an SVG image"
-              >
-                SVG
-              </button>
               {user ? (
                 <button
                   onClick={() => setShowCloud(true)}
@@ -922,6 +942,27 @@ export default function Canvas() {
                   title="Save to / open from the cloud"
                 >
                   <Cloud size={13} /> Cloud
+                </button>
+              ) : null}
+              {isSupabaseConfigured ? (
+                <button
+                  onClick={handleShare}
+                  disabled={shareState === "sharing"}
+                  className="flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+                  title={
+                    user
+                      ? "Publish this diagram and copy a shareable link"
+                      : "Sign in to share a live link to this diagram"
+                  }
+                >
+                  <Share2 size={13} />
+                  {shareState === "sharing"
+                    ? "Sharing…"
+                    : shareState === "copied"
+                      ? "Link copied!"
+                      : shareState === "error"
+                        ? "Failed — retry"
+                        : "Share"}
                 </button>
               ) : null}
             </div>
@@ -1008,6 +1049,18 @@ export default function Canvas() {
           onOpen={openFromCloud}
           onDelete={deleteFromCloud}
           onClose={() => setShowCloud(false)}
+        />
+      ) : null}
+      {showAuth ? <AuthModal onClose={() => setShowAuth(false)} /> : null}
+      {showLearn ? (
+        <LearnPanel
+          mode={mode}
+          onUseTemplate={(t) => {
+            setMode("system");
+            addTemplate(t);
+            setShowLearn(false);
+          }}
+          onClose={() => setShowLearn(false)}
         />
       ) : null}
     </div>

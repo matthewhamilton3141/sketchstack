@@ -49,6 +49,10 @@ export default function DetailsPanel({
         </button>
       </div>
 
+      <p className="mb-3 rounded-md bg-[var(--panel-2)] px-2 py-1.5 text-[11px] leading-snug text-[var(--muted)]">
+        {spec.description}
+      </p>
+
       <label className="mb-2 block">
         <span className="mb-0.5 block text-xs font-medium text-[var(--muted)]">
           Name

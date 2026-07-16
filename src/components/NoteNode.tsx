@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { StickyNote } from "lucide-react";
 import type { NodeProps, Node } from "@xyflow/react";
+import { useNoteDisplay } from "@/components/noteDisplay";
 
 // Accent color for notes (amber), used by the card and the palette chip.
 export const NOTE_COLOR = "#f59e0b";
@@ -24,6 +25,7 @@ export type NoteNode = Node<NoteNodeData, "note">;
 // A standalone sticky-note card. Shows bullet headlines; each bullet's
 // sub-comments are hidden until you hover that bullet.
 function NoteNodeComponent({ data, selected }: NodeProps<NoteNode>) {
+  const { expandAll } = useNoteDisplay();
   return (
     <div
       style={{ borderColor: NOTE_COLOR }}
@@ -51,7 +53,11 @@ function NoteNodeComponent({ data, selected }: NodeProps<NoteNode>) {
                 <span>{b.text.trim() || "…"}</span>
               </div>
               {b.children.length > 0 ? (
-                <ul className="ml-4 hidden list-disc space-y-0.5 pl-1 text-xs text-[var(--muted)] group-hover/bullet:block">
+                <ul
+                  className={`ml-4 list-disc space-y-0.5 pl-1 text-xs text-[var(--muted)] ${
+                    expandAll ? "block" : "hidden group-hover/bullet:block"
+                  }`}
+                >
                   {b.children.map((c, i) => (
                     <li key={i}>{c}</li>
                   ))}

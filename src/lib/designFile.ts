@@ -1,7 +1,7 @@
 import type { Edge } from "@xyflow/react";
 import type { AppNode } from "@/lib/appNode";
 import type { DiagramMode } from "@/lib/nodeTypes";
-import { slugify } from "@/lib/exportImage";
+import { slugify } from "@/lib/slugify";
 
 // The on-disk format for a downloaded design. Versioned so we can migrate later.
 export interface DesignFile {
