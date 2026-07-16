@@ -38,7 +38,12 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = (t: Theme) => {
     setThemeState(t);
-    document.documentElement.dataset.theme = t;
+    const html = document.documentElement;
+    // Enable the cross-fade transition just for this swap, then drop it so it
+    // doesn't affect ordinary hover/focus transitions.
+    html.classList.add("theme-transition");
+    html.dataset.theme = t;
+    window.setTimeout(() => html.classList.remove("theme-transition"), 400);
     try {
       localStorage.setItem(STORAGE_KEY, t);
     } catch {

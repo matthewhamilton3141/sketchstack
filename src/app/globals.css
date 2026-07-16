@@ -39,6 +39,31 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
+/* ---- Smooth cross-fade when toggling light/dark. The class is added to
+   <html> only during a theme switch (then removed), so it animates the token
+   swap without slowing down ordinary hover/focus color transitions. ---- */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition:
+    background-color 0.35s ease,
+    border-color 0.35s ease,
+    color 0.35s ease,
+    fill 0.35s ease,
+    stroke 0.35s ease !important;
+  transition-delay: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition: none !important;
+  }
+}
+
 /* ---- React Flow chrome themed via tokens. !important is needed because the
    library's own stylesheet loads after this file and would otherwise win. ---- */
 .react-flow__controls-button {
