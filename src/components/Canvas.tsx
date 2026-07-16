@@ -44,6 +44,7 @@ import {
   Cloud,
   Share2,
   GraduationCap,
+  Trash2,
 } from "lucide-react";
 import SystemNodeComponent, { type SystemNode } from "@/components/SystemNode";
 import NoteNodeComponent, {
@@ -60,6 +61,7 @@ import EdgePanel from "@/components/EdgePanel";
 import PromptPanel from "@/components/PromptPanel";
 import CloudPanel from "@/components/CloudPanel";
 import LearnPanel from "@/components/LearnPanel";
+import CommandPalette from "@/components/CommandPalette";
 import NodePaletteItem from "@/components/NodePaletteItem";
 import { TEMPLATES, type Template } from "@/lib/templates";
 import { useTheme } from "@/components/ThemeProvider";
@@ -161,6 +163,8 @@ export default function Canvas() {
   const [showCloud, setShowCloud] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [showLearn, setShowLearn] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   // Share button feedback: idle → sharing → copied (or error), auto-resets.
   const [shareState, setShareState] = useState<
     "idle" | "sharing" | "copied" | "error"
@@ -703,6 +707,12 @@ export default function Canvas() {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
+      // ⌘K opens the component palette from anywhere (even while typing).
+      if (mod && key === "k") {
+        e.preventDefault();
+        setShowPalette((v) => !v);
+        return;
+      }
       if (isTyping()) return;
       if (mod && key === "z") {
         e.preventDefault();
@@ -856,11 +866,11 @@ export default function Canvas() {
                 Add a component
               </span>
               <button
-                onClick={clearCanvas}
-                className="text-[10px] font-medium text-[var(--muted)] hover:text-red-500"
-                title="Clear the canvas"
+                onClick={() => setShowPalette(true)}
+                className="flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)] hover:bg-[var(--panel-2)] hover:text-[var(--text)]"
+                title="Search components (⌘K)"
               >
-                Clear
+                <span className="font-mono">⌘K</span>
               </button>
             </div>
             {paletteGroups(mode).map(({ category, kinds }) => (
@@ -903,6 +913,15 @@ export default function Canvas() {
                 title="Redo (⇧⌘Z)"
               >
                 <Redo2 size={15} />
+              </button>
+              <button
+                onClick={() => setConfirmClear(true)}
+                disabled={nodes.length === 0 && edges.length === 0}
+                className="flex items-center gap-1 rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Clear the canvas"
+              >
+                <Trash2 size={13} />
+                Clear
               </button>
             </div>
             <input
@@ -1061,6 +1080,59 @@ export default function Canvas() {
             setShowLearn(false);
           }}
           onClose={() => setShowLearn(false)}
+        />
+      ) : null}
+      {confirmClear ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setConfirmClear(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="clear-title"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--panel)] p-5 shadow-xl"
+          >
+            <div className="flex items-center gap-2">
+              <Trash2 size={18} className="text-red-500" />
+              <h2 id="clear-title" className="text-base font-semibold text-[var(--text)]">
+                Clear the canvas?
+              </h2>
+            </div>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              This removes all {nodes.length} node{nodes.length === 1 ? "" : "s"} and{" "}
+              {edges.length} connection{edges.length === 1 ? "" : "s"} from the canvas. You
+              can undo this with ⌘Z.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmClear(false)}
+                className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  clearCanvas();
+                  setConfirmClear(false);
+                }}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-500"
+              >
+                Clear canvas
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {showPalette ? (
+        <CommandPalette
+          mode={mode}
+          onSelect={(kind, label) => {
+            addNode(kind, label);
+            setShowPalette(false);
+          }}
+          onClose={() => setShowPalette(false)}
         />
       ) : null}
     </div>
