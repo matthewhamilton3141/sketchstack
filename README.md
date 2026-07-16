@@ -1,31 +1,46 @@
 # Sketchstack
 
-A visual systems-design tool that turns a diagram into a structured prompt for
-your AI coding agent. Sketch your stack: drag typed components onto a canvas,
-wire them together, describe each one, then generate a clean spec you can paste
-into Claude Code, Cursor, or any agent — so you plan by *seeing* how the system
+A visual systems-design canvas that turns a diagram into a structured prompt
+for your AI coding agent. Sketch your stack — drag typed components onto a
+canvas, wire them together, describe each one — then generate a clean spec you
+can paste into Claude Code, Cursor, or any agent. Plan by *seeing* how a system
 connects instead of writing plain text.
+
+**Guest-first:** everything except cloud save works with no account.
 
 ## Features
 
-- **Interactive canvas** (React Flow) — drag nodes, connect any side to any
-  side, zoom, pan, minimap.
-- **22 typed components** across four categories (Web/API core, Async & infra,
-  External & auth, AI / data), each with its own color and SVG icon.
-- **Editable node details** — name, technology (with suggestions), and notes.
-- **Generate Prompt** — walks the graph and emits a structured Markdown spec
-  (components, tech, connections, data flow) with one-click copy.
-- **Auto-save** to the browser (localStorage) so diagrams survive a refresh.
-- **Accounts** — passwordless magic-link sign-in via Supabase, with a one-time
-  username prompt.
-- **Themes** — light, dusk (bluish-grey), and dark, remembered per browser.
+- **Interactive canvas** (React Flow) — draggable nodes, connect any dot to any
+  dot, reconnect edges, labeled connections, zoom/pan, auto-hiding minimap.
+- **Diagram modes** — swap the node pack + generated-prompt template between
+  **System Design**, **App / UI Flow**, **Database Schema**, and **Task
+  Planning**.
+- **35+ typed nodes** with per-type color + SVG icon, a **Custom** blank node,
+  and per-node color override. Hover a node type for a quick explanation.
+- **Notes** — standalone sticky-note cards with bullet points that expand on
+  hover, plus per-note control over what reaches the prompt.
+- **Generate Prompt** — walks the graph into a structured, mode-aware Markdown
+  spec (grouped components, connections/relations, bidirectional `↔` merging),
+  with copy + download.
+- **Editing power tools** — undo/redo, duplicate, multi-select + align/
+  distribute, center-snapping alignment guides.
+- **Templates** — one-click starting points (SaaS app, REST API + DB, AI RAG,
+  event-driven) you can drag on and compose.
+- **Auto-save** to the browser (localStorage); **download/import** a
+  `.sketchstack.json` design; **export** the canvas as PNG/SVG.
+- **Accounts** — GitHub OAuth sign-in via Supabase with a one-time username.
+- **Cloud save** — up to 5 named diagrams per account (overflow stays local).
+- **Sharing** — make a diagram public and share a read-only `/d/<id>` link;
+  visitors can "Open a copy" into their own canvas.
+- **Themes** — light and dark, remembered per browser.
 
 ## Tech stack
 
 - [Next.js](https://nextjs.org) (App Router) + TypeScript + Tailwind CSS
 - [React Flow](https://reactflow.dev) (`@xyflow/react`) for the canvas
-- [Supabase](https://supabase.com) for auth + Postgres storage
+- [Supabase](https://supabase.com) for auth (GitHub OAuth) + Postgres storage
 - [lucide-react](https://lucide.dev) for icons
+- Deployed on [Vercel](https://vercel.com)
 
 ## Getting started
 
@@ -34,10 +49,10 @@ npm install
 npm run dev
 ```
 
-Then open the URL printed in the terminal (http://localhost:3000, or the next
-free port such as 3001).
+Open the URL printed in the terminal (http://localhost:3000, or the next free
+port such as 3001). Guest features work immediately with no configuration.
 
-### Environment
+### Environment (for auth + cloud save)
 
 Create a `.env.local` (gitignored) with your Supabase project credentials:
 
@@ -46,27 +61,37 @@ NEXT_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-publishable-anon-key>
 ```
 
-For magic-link sign-in to redirect back correctly, add your local URL (e.g.
-`http://localhost:3001`) to **Authentication → URL Configuration** in the
-Supabase dashboard.
+The app runs fine without these — the sign-in UI just hides until they're set.
+
+### Auth (GitHub OAuth)
+
+1. Create a GitHub OAuth App (github.com/settings/developers) with the
+   callback URL `https://<your-project>.supabase.co/auth/v1/callback`.
+2. In Supabase → **Authentication → Providers → GitHub**, enable it and paste
+   the Client ID + Secret.
+3. Add your app URL(s) to **Authentication → URL Configuration** (Site URL +
+   redirect allowlist), e.g. `http://localhost:3001` and your deployed URL.
 
 ### Database
 
-Run the SQL in [`supabase/profiles.sql`](supabase/profiles.sql) in the Supabase
-SQL Editor to create the `profiles` table (usernames) with row-level security.
+Run these in the Supabase SQL Editor:
+
+- [`supabase/profiles.sql`](supabase/profiles.sql) — usernames (`profiles`
+  table + RLS).
+- [`supabase/diagrams.sql`](supabase/diagrams.sql) — cloud-saved + shareable
+  diagrams (`diagrams` table + RLS).
 
 ## Project layout
 
 ```
 src/
-  app/            Next.js App Router (layout, page, global styles)
-  components/     Canvas, nodes, panels, auth, theming
-  lib/            nodeTypes registry, prompt generator, Supabase client
-supabase/         SQL schema
+  app/            App Router (editor page, /d/[id] shared view, layout, styles)
+  components/     Canvas, nodes, panels (details/edge/note/cloud), auth, theming
+  lib/            node registry, modes, prompt generator, export, Supabase, cloud
+supabase/         SQL schema (profiles, diagrams)
 ```
 
 ## Roadmap
 
-- Cloud-saved diagrams (up to 5 named diagrams per account, overflow local)
-- Editable edge labels for richer data-flow in the generated prompt
-- Custom SMTP for reliable auth emails
+- An in-app "Learn" panel with guides for building common system types
+- More per-mode node packs and templates

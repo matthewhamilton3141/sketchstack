@@ -41,6 +41,7 @@ import {
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
   StickyNote,
+  Cloud,
 } from "lucide-react";
 import SystemNodeComponent, { type SystemNode } from "@/components/SystemNode";
 import NoteNodeComponent, {
@@ -55,8 +56,21 @@ import DetailsPanel from "@/components/DetailsPanel";
 import NoteEditorPanel from "@/components/NoteEditorPanel";
 import EdgePanel from "@/components/EdgePanel";
 import PromptPanel from "@/components/PromptPanel";
+import CloudPanel from "@/components/CloudPanel";
 import { TEMPLATES, type Template } from "@/lib/templates";
 import { useTheme } from "@/components/ThemeProvider";
+import { useAuth } from "@/components/AuthProvider";
+import {
+  createDiagram,
+  updateDiagram,
+  loadDiagram,
+  deleteDiagram,
+  type DiagramData,
+} from "@/lib/cloudDiagrams";
+import {
+  DIAGRAM_STORAGE_KEY as STORAGE_KEY,
+  LEGACY_DIAGRAM_STORAGE_KEY as LEGACY_KEY,
+} from "@/lib/storageKeys";
 import { generatePrompt } from "@/lib/generatePrompt";
 import { exportCanvasImage, slugify } from "@/lib/exportImage";
 import { downloadDesign, parseDesign } from "@/lib/designFile";
@@ -123,11 +137,8 @@ const ALIGN_ACTIONS: { mode: AlignMode; Icon: typeof Undo2; label: string }[] = 
   { mode: "distV", Icon: AlignVerticalDistributeCenter, label: "Distribute vertically" },
 ];
 
-// Where the diagram is auto-saved in the browser. Bump the version suffix if
-// the saved shape ever changes in a breaking way. LEGACY_KEY is the pre-rebrand
-// key, read once so existing diagrams migrate over.
-const STORAGE_KEY = "sketchstack:diagram:v1";
-const LEGACY_KEY = "sysdesign:diagram:v1";
+// STORAGE_KEY / LEGACY_KEY are imported from @/lib/storageKeys so the shared
+// viewer's "Open a copy" writes to the same working diagram.
 
 export default function Canvas() {
   const [nodes, setNodes] = useNodesState<AppNode>(initialNodes);
@@ -137,6 +148,10 @@ export default function Canvas() {
   const [prompt, setPrompt] = useState<string | null>(null);
   const [title, setTitle] = useState(DEFAULT_TITLE);
   const [mode, setMode] = useState<DiagramMode>("system");
+  // Cloud save: the currently-loaded cloud diagram (if any), and panel state.
+  const { user } = useAuth();
+  const [currentCloudId, setCurrentCloudId] = useState<string | null>(null);
+  const [showCloud, setShowCloud] = useState(false);
   const [rfInstance, setRfInstance] =
     useState<ReactFlowInstance<AppNode, Edge> | null>(null);
   // Minimap only shows while the user is moving around, then fades out.
@@ -203,6 +218,7 @@ export default function Canvas() {
           edges?: Edge[];
           title?: string;
           mode?: DiagramMode;
+          cloudId?: string;
         };
         if (saved.nodes?.length) {
           setNodes(saved.nodes);
@@ -210,6 +226,7 @@ export default function Canvas() {
         if (saved.edges) setEdges(saved.edges);
         if (saved.title) setTitle(saved.title);
         if (saved.mode) setMode(saved.mode);
+        if (saved.cloudId) setCurrentCloudId(saved.cloudId);
       }
     } catch {
       // Corrupt/blocked storage — fall back to the default diagram.
@@ -223,12 +240,12 @@ export default function Canvas() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ nodes, edges, title, mode }),
+        JSON.stringify({ nodes, edges, title, mode, cloudId: currentCloudId }),
       );
     } catch {
       // Storage full or disabled — ignore; the app still works in-memory.
     }
-  }, [nodes, edges, title, mode, hydrated]);
+  }, [nodes, edges, title, mode, currentCloudId, hydrated]);
 
   // Node changes with alignment snapping. When a single node is being dragged,
   // snap it to the nearest alignment with another node and show guide lines.
@@ -262,7 +279,48 @@ export default function Canvas() {
     setNodes([]);
     setEdges([]);
     setSelectedId(null);
+    setCurrentCloudId(null); // a cleared canvas is no longer the loaded cloud diagram
   }, [takeSnapshot, setNodes, setEdges]);
+
+  // --- Cloud save handlers (only meaningful when signed in) ---
+  const saveToCloud = useCallback(
+    async (asNew: boolean) => {
+      if (!user) return;
+      const data: DiagramData = { nodes, edges };
+      const name = title.trim() || "Untitled";
+      if (!asNew && currentCloudId) {
+        await updateDiagram(currentCloudId, name, mode, data);
+      } else {
+        const id = await createDiagram(user.id, name, mode, data);
+        setCurrentCloudId(id);
+      }
+    },
+    [user, nodes, edges, title, mode, currentCloudId],
+  );
+
+  const openFromCloud = useCallback(
+    async (id: string) => {
+      const loaded = await loadDiagram(id);
+      takeSnapshot();
+      setNodes(loaded.data.nodes ?? []);
+      setEdges(loaded.data.edges ?? []);
+      setTitle(loaded.name);
+      setMode(loaded.mode);
+      setCurrentCloudId(id);
+      setSelectedId(null);
+      setSelectedEdgeId(null);
+      setShowCloud(false);
+    },
+    [takeSnapshot, setNodes, setEdges],
+  );
+
+  const deleteFromCloud = useCallback(
+    async (id: string) => {
+      await deleteDiagram(id);
+      if (id === currentCloudId) setCurrentCloudId(null);
+    },
+    [currentCloudId],
+  );
 
   // Merge a patch into the selected system node's data (details panel).
   const updateNodeData = useCallback(
@@ -857,6 +915,15 @@ export default function Canvas() {
               >
                 SVG
               </button>
+              {user ? (
+                <button
+                  onClick={() => setShowCloud(true)}
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
+                  title="Save to / open from the cloud"
+                >
+                  <Cloud size={13} /> Cloud
+                </button>
+              ) : null}
             </div>
           </div>
         </Panel>
@@ -931,6 +998,16 @@ export default function Canvas() {
           prompt={prompt}
           fileName={`${slugify(title)}-prompt`}
           onClose={() => setPrompt(null)}
+        />
+      ) : null}
+      {showCloud && user ? (
+        <CloudPanel
+          currentName={title.trim() || "Untitled"}
+          currentCloudId={currentCloudId}
+          onSave={saveToCloud}
+          onOpen={openFromCloud}
+          onDelete={deleteFromCloud}
+          onClose={() => setShowCloud(false)}
         />
       ) : null}
     </div>
