@@ -1,37 +1,43 @@
 import type { Edge } from "@xyflow/react";
-import { CATEGORY_ORDER, NODE_KINDS } from "@/lib/nodeTypes";
+import {
+  ALL_CATEGORY_ORDER,
+  NODE_KINDS,
+  type DiagramMode,
+} from "@/lib/nodeTypes";
+import { MODES } from "@/lib/modes";
 import type { SystemNode } from "@/components/SystemNode";
 import type { NoteNode } from "@/components/NoteNode";
 import type { AppNode } from "@/lib/appNode";
 
-// Turn the diagram into a clean, structured Markdown spec that a user can
-// paste into an AI coding agent. Pure function of (nodes, edges) so it's easy
-// to test and reuse.
+// Turn the diagram into a clean, structured Markdown spec that a user can paste
+// into an AI coding agent. The mode tailors the headings and instructions.
 export function generatePrompt(
   nodes: AppNode[],
   edges: Edge[],
-  title = "Untitled system",
+  title = "Untitled",
+  mode: DiagramMode = "system",
 ): string {
-  const heading = title.trim() || "Untitled system";
+  const cfg = MODES[mode];
+  const heading = title.trim() || "Untitled";
   const systemNodes = nodes.filter(
     (n): n is SystemNode => n.type === "system",
   );
   const noteNodes = nodes.filter((n): n is NoteNode => n.type === "note");
 
   if (systemNodes.length === 0 && noteNodes.length === 0) {
-    return `# ${heading}\n\n_Add some components to the canvas to generate a spec._\n`;
+    return `# ${heading}\n\n_${cfg.emptyHint}_\n`;
   }
 
   const byId = new Map(systemNodes.map((n) => [n.id, n]));
   const lines: string[] = [];
 
-  lines.push(`# System Design: ${heading}`);
+  lines.push(`# ${cfg.promptTitle}: ${heading}`);
   lines.push("");
 
   if (systemNodes.length > 0) {
-    // --- Components, grouped by category so related pieces read together ---
-    lines.push("## Components");
-    for (const category of CATEGORY_ORDER) {
+    // --- Items, grouped by category so related pieces read together ---
+    lines.push(`## ${cfg.itemsHeading}`);
+    for (const category of ALL_CATEGORY_ORDER) {
       const inCategory = systemNodes.filter(
         (n) => NODE_KINDS[n.data.kind].category === category,
       );
@@ -55,19 +61,35 @@ export function generatePrompt(
     }
     lines.push("");
 
-    // --- Connections / data flow ---
-    lines.push("## Connections / Data Flow");
+    // --- Connections / relationships ---
+    lines.push(`## ${cfg.connectionsHeading}`);
     if (edges.length === 0) {
       lines.push("- _No connections drawn yet._");
     } else {
+      // Collapse a pair that connects both ways (A→B and B→A) into "A ↔ B".
+      const byPair = new Map(edges.map((e) => [`${e.source}|${e.target}`, e]));
+      const emitted = new Set<string>();
+      const nameOf = (id: string) => byId.get(id)?.data.label ?? id;
+      const labelOf = (e: Edge) =>
+        typeof e.label === "string" ? e.label.trim() : "";
+
       for (const edge of edges) {
-        const source = byId.get(edge.source)?.data.label ?? edge.source;
-        const target = byId.get(edge.target)?.data.label ?? edge.target;
-        const label =
-          typeof edge.label === "string" && edge.label.trim()
-            ? `: ${edge.label.trim()}`
-            : "";
-        lines.push(`- ${source} → ${target}${label}`);
+        if (emitted.has(edge.id)) continue;
+        const reverse = byPair.get(`${edge.target}|${edge.source}`);
+        const source = nameOf(edge.source);
+        const target = nameOf(edge.target);
+
+        if (reverse && reverse.id !== edge.id) {
+          emitted.add(edge.id);
+          emitted.add(reverse.id);
+          const labels = [labelOf(edge), labelOf(reverse)].filter(Boolean);
+          const suffix = labels.length ? `: ${labels.join(" / ")}` : "";
+          lines.push(`- ${source} ↔ ${target}${suffix}`);
+        } else {
+          emitted.add(edge.id);
+          const label = labelOf(edge);
+          lines.push(`- ${source} → ${target}${label ? `: ${label}` : ""}`);
+        }
       }
     }
     lines.push("");
@@ -99,13 +121,9 @@ export function generatePrompt(
     lines.push("");
   }
 
-  // --- Instructions for the agent ---
+  // --- Instructions for the agent (mode-specific) ---
   lines.push("## Instructions");
-  lines.push(
-    "Implement the system described above. Treat each component as a distinct " +
-      "part of the architecture, use the specified technologies where given, and " +
-      "honor the connections as the data flow between components.",
-  );
+  lines.push(cfg.instructions);
   lines.push("");
 
   return lines.join("\n");

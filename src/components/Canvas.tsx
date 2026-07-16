@@ -61,12 +61,13 @@ import { generatePrompt } from "@/lib/generatePrompt";
 import { exportCanvasImage, slugify } from "@/lib/exportImage";
 import { downloadDesign, parseDesign } from "@/lib/designFile";
 import {
-  CATEGORY_ORDER,
-  KINDS_BY_CATEGORY,
   NODE_KINDS,
+  paletteGroups,
+  type DiagramMode,
   type NodeKind,
   type SystemNodeData,
 } from "@/lib/nodeTypes";
+import { MODES, MODE_ORDER } from "@/lib/modes";
 
 // Concrete colors for React Flow's SVG chrome (background dots + minimap) and
 // image-export background, which can't read CSS variables. Keyed by theme.
@@ -135,6 +136,7 @@ export default function Canvas() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string | null>(null);
   const [title, setTitle] = useState(DEFAULT_TITLE);
+  const [mode, setMode] = useState<DiagramMode>("system");
   const [rfInstance, setRfInstance] =
     useState<ReactFlowInstance<AppNode, Edge> | null>(null);
   // Minimap only shows while the user is moving around, then fades out.
@@ -197,15 +199,17 @@ export default function Canvas() {
         localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as {
-          nodes?: SystemNode[];
+          nodes?: AppNode[];
           edges?: Edge[];
           title?: string;
+          mode?: DiagramMode;
         };
         if (saved.nodes?.length) {
           setNodes(saved.nodes);
         }
         if (saved.edges) setEdges(saved.edges);
         if (saved.title) setTitle(saved.title);
+        if (saved.mode) setMode(saved.mode);
       }
     } catch {
       // Corrupt/blocked storage — fall back to the default diagram.
@@ -217,11 +221,14 @@ export default function Canvas() {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, title }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ nodes, edges, title, mode }),
+      );
     } catch {
       // Storage full or disabled — ignore; the app still works in-memory.
     }
-  }, [nodes, edges, title, hydrated]);
+  }, [nodes, edges, title, mode, hydrated]);
 
   // Node changes with alignment snapping. When a single node is being dragged,
   // snap it to the nearest alignment with another node and show guide lines.
@@ -564,11 +571,17 @@ export default function Canvas() {
       e.target.value = ""; // let the same file be re-imported later
       if (!file) return;
       try {
-        const { title: t, nodes: n, edges: ed } = parseDesign(await file.text());
+        const {
+          title: t,
+          mode: m,
+          nodes: n,
+          edges: ed,
+        } = parseDesign(await file.text());
         takeSnapshot();
         setNodes(n);
         setEdges(ed);
         setTitle(t);
+        setMode(m);
         setSelectedId(null);
         setSelectedEdgeId(null);
       } catch {
@@ -683,10 +696,23 @@ export default function Canvas() {
         />
         <Panel position="top-left">
           <div className="flex max-h-[calc(100vh-8rem)] w-56 flex-col overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--panel)] p-2 shadow-sm">
-            <div className="mb-2">
-              <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)] opacity-70">
-                Templates · drag or click
-              </div>
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as DiagramMode)}
+              aria-label="Diagram mode"
+              className="mb-2 w-full rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-2 py-1.5 text-xs font-semibold text-[var(--text)] outline-none"
+            >
+              {MODE_ORDER.map((m) => (
+                <option key={m} value={m}>
+                  {MODES[m].label}
+                </option>
+              ))}
+            </select>
+            {mode === "system" ? (
+              <div className="mb-2">
+                <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)] opacity-70">
+                  Templates · drag or click
+                </div>
               <div className="flex flex-col gap-1">
                 {TEMPLATES.map((t) => (
                   <button
@@ -704,7 +730,8 @@ export default function Canvas() {
                   </button>
                 ))}
               </div>
-            </div>
+              </div>
+            ) : null}
             <div className="mb-2">
               <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)] opacity-70">
                 Annotate · drag or click
@@ -739,13 +766,13 @@ export default function Canvas() {
                 Clear
               </button>
             </div>
-            {CATEGORY_ORDER.map((category) => (
+            {paletteGroups(mode).map(({ category, kinds }) => (
               <div key={category} className="mb-1.5">
                 <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)] opacity-70">
                   {category}
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {KINDS_BY_CATEGORY[category].map((spec) => {
+                  {kinds.map((spec) => {
                     const Icon = spec.icon;
                     return (
                       <button
@@ -810,7 +837,7 @@ export default function Canvas() {
                 Import
               </button>
               <button
-                onClick={() => downloadDesign(title, nodes, edges)}
+                onClick={() => downloadDesign(title, mode, nodes, edges)}
                 className="rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
                 title="Download the editable design (.json)"
               >
@@ -856,7 +883,7 @@ export default function Canvas() {
         <Panel position="bottom-center">
           <div className="flex flex-col items-center gap-1">
             <button
-              onClick={() => setPrompt(generatePrompt(nodes, edges, title))}
+              onClick={() => setPrompt(generatePrompt(nodes, edges, title, mode))}
               className="rounded-full bg-[var(--btn-bg)] px-5 py-2 text-sm font-semibold text-[var(--btn-text)] shadow-md hover:bg-[var(--btn-hover)]"
             >
               Generate Prompt
