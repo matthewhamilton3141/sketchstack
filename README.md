@@ -15,23 +15,28 @@ connects instead of writing plain text.
 - **Diagram modes** — swap the node pack + generated-prompt template between
   **System Design**, **App / UI Flow**, **Database Schema**, and **Task
   Planning**.
-- **35+ typed nodes** with per-type color + SVG icon, a **Custom** blank node,
-  and per-node color override. Hover a node type for a quick explanation.
-- **Notes** — standalone sticky-note cards with bullet points that expand on
-  hover, plus per-note control over what reaches the prompt.
+- **50+ typed components** with per-type color + SVG icon, a **Custom** blank
+  node, and per-node color override.
+- **Notes** — standalone sticky-note cards with bullets + sub-comments, plus
+  per-note control over what reaches the prompt.
 - **Generate Prompt** — walks the graph into a structured, mode-aware Markdown
   spec (grouped components, connections/relations, bidirectional `↔` merging),
   with copy + download.
+- **Learn** — a built-in panel that teaches how to build common architectures
+  (how-it-works steps, starter blueprints, and a glossary of every component),
+  plus a hover tooltip on each palette item explaining what it is and when to
+  use it.
 - **Editing power tools** — undo/redo, duplicate, multi-select + align/
   distribute, center-snapping alignment guides.
 - **Templates** — one-click starting points (SaaS app, REST API + DB, AI RAG,
   event-driven) you can drag on and compose.
 - **Auto-save** to the browser (localStorage); **download/import** a
-  `.sketchstack.json` design; **export** the canvas as PNG/SVG.
+  `.sketchstack.json` design file.
 - **Accounts** — GitHub OAuth sign-in via Supabase with a one-time username.
 - **Cloud save** — up to 5 named diagrams per account (overflow stays local).
-- **Sharing** — make a diagram public and share a read-only `/d/<id>` link;
-  visitors can "Open a copy" into their own canvas.
+- **Sharing** — one click to publish a diagram and copy a read-only `/d/<id>`
+  link (with rich link previews); visitors get the full diagram, notes expanded,
+  and can "Open a copy" into their own canvas.
 - **Themes** — light and dark, remembered per browser.
 
 ## Tech stack
@@ -86,12 +91,12 @@ Run these in the Supabase SQL Editor:
 ```
 src/
   app/            App Router (editor page, /d/[id] shared view, layout, styles)
-  components/     Canvas, nodes, panels (details/edge/note/cloud), auth, theming
-  lib/            node registry, modes, prompt generator, export, Supabase, cloud
+  components/     Canvas, nodes, panels (details/edge/note/cloud/learn), auth, theming
+  lib/            node registry, modes, prompt generator, templates, Supabase, cloud
 supabase/         SQL schema (profiles, diagrams)
 ```
 
 ## Roadmap
 
-- An in-app "Learn" panel with guides for building common system types
 - More per-mode node packs and templates
+- Guest sharing (publish a link without an account)

@@ -1,0 +1,33 @@
+import Link from "next/link";
+import Canvas from "@/components/Canvas";
+import AuthBar from "@/components/AuthBar";
+import ThemeToggle from "@/components/ThemeToggle";
+import HeaderLinks from "@/components/HeaderLinks";
+
+export default function Editor() {
+  return (
+    <div className="flex flex-1 flex-col">
+      <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--panel)] px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Link
+            href="/"
+            className="text-lg font-semibold tracking-tight text-[var(--text)]"
+          >
+            Sketchstack
+          </Link>
+          <span className="hidden text-sm text-[var(--muted)] sm:inline">
+            — sketch your stack, generate a prompt
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <HeaderLinks />
+          <ThemeToggle />
+          <AuthBar />
+        </div>
+      </header>
+      <main className="flex-1">
+        <Canvas />
+      </main>
+    </div>
+  );
+}

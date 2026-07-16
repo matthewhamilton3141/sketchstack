@@ -102,21 +102,29 @@ export const TEMPLATES: Template[] = [
     {
       id: "rag",
       name: "AI RAG app",
-      description: "Chat UI, backend, an LLM, and a vector DB with ingestion.",
+      description:
+        "Chat UI, backend, an LLM, and a vector DB — with a shared embedding model feeding both the query and ingest paths.",
       title: "AI RAG app",
       nodes: [
         n("1", "frontend", "Chat UI", 0, 0),
         n("2", "api", "Backend", 250, 0),
-        n("3", "llm", "LLM", 500, -90, "Claude"),
-        n("4", "vectordb", "Vector DB", 500, 90, "pgvector"),
-        n("5", "pipeline", "Ingest pipeline", 250, 190),
+        n("3", "llm", "LLM", 520, -110, "Claude"),
+        n("6", "llm", "Embedding model", 520, 90, "text-embedding-3"),
+        n("4", "vectordb", "Vector DB", 780, 40, "pgvector"),
+        n("5", "pipeline", "Ingest pipeline", 250, 220),
+        n("7", "storage", "Data source", 0, 220, "S3, files, docs"),
       ],
     },
     [
       ["e1", "1", "2"],
-      ["e2", "2", "3", "prompt"],
-      ["e3", "2", "4", "retrieve context"],
-      ["e4", "5", "4", "embed & upsert"],
+      ["e2", "2", "3", "prompt + context"],
+      // Query path: embed the question, then search with that vector.
+      ["e3", "2", "6", "embed query"],
+      ["e4", "2", "4", "similarity search"],
+      // Ingest path: load docs, embed the chunks, upsert into the same store.
+      ["e5", "7", "5", "load docs"],
+      ["e6", "5", "6", "embed chunks"],
+      ["e7", "5", "4", "upsert vectors"],
     ],
   ),
   makeTemplate(

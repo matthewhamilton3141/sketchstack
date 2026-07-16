@@ -72,7 +72,7 @@ export default function SharedDiagram({ id }: { id: string }) {
     } catch {
       // ignore storage errors
     }
-    router.push("/");
+    router.push("/new");
   };
 
   if (error) {

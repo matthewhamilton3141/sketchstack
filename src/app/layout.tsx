@@ -16,8 +16,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sketchstack",
-  description: "Sketch your stack, generate a prompt for your AI coding agent.",
+  metadataBase: new URL("https://sketchstack.vercel.app"),
+  title: "Sketchstack — sketch your stack, generate a prompt",
+  description:
+    "Draw your system as a diagram and Sketchstack turns it into a clean, structured prompt your AI coding agent can build from.",
+  applicationName: "Sketchstack",
+  openGraph: {
+    title: "Sketchstack",
+    description: "Turn system diagrams into agent-ready prompts.",
+    url: "/",
+    siteName: "Sketchstack",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Sketchstack",
+    description: "Turn system diagrams into agent-ready prompts.",
+  },
 };
 
 // Runs before React hydrates so the correct theme is applied with no flash.

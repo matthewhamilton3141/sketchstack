@@ -1,0 +1,29 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sketchstack">
+  <defs>
+    <linearGradient id="ss-tile" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- monochrome slate tile -->
+  <rect width="512" height="512" rx="116" fill="url(#ss-tile)"/>
+
+  <!-- edges connecting the stacked nodes -->
+  <g stroke="#ffffff" stroke-width="18" stroke-linecap="round" opacity="0.35" fill="none">
+    <path d="M168 168 L344 256"/>
+    <path d="M344 256 L168 344"/>
+  </g>
+
+  <!-- three Gemini-palette diagram nodes: blue -> purple -> rose -->
+  <rect x="112" y="120" width="112" height="96" rx="26" fill="#4285f4"/>
+  <rect x="288" y="208" width="112" height="96" rx="26" fill="#f5a623"/>
+  <rect x="112" y="296" width="112" height="96" rx="26" fill="#d96570"/>
+
+  <!-- handle dots -->
+  <g fill="#ffffff">
+    <circle cx="168" cy="168" r="15"/>
+    <circle cx="344" cy="256" r="15"/>
+    <circle cx="168" cy="344" r="15"/>
+  </g>
+</svg>
