@@ -13,7 +13,10 @@ export async function exportCanvasImage(
   const viewportEl = document.querySelector(
     ".react-flow__viewport",
   ) as HTMLElement | null;
-  if (!viewportEl || nodes.length === 0) return;
+  if (!viewportEl || nodes.length === 0) {
+    alert("Nothing to export yet — add some nodes first.");
+    return;
+  }
 
   const root = document.documentElement;
   const prevTheme = root.dataset.theme;
@@ -30,6 +33,8 @@ export async function exportCanvasImage(
       backgroundColor: "#ffffff",
       width,
       height,
+      cacheBust: true,
+      pixelRatio: format === "png" ? 2 : 1,
       style: {
         width: `${width}px`,
         height: `${height}px`,
@@ -37,15 +42,22 @@ export async function exportCanvasImage(
       },
     };
 
-    const dataUrl =
-      format === "png"
-        ? await toPng(viewportEl, options)
-        : await toSvg(viewportEl, options);
+    const render = format === "png" ? toPng : toSvg;
+    // First pass warms fonts/images (html-to-image's first render is often
+    // blank/partial); the second pass is the one we keep.
+    await render(viewportEl, options);
+    const dataUrl = await render(viewportEl, options);
 
     const link = document.createElement("a");
     link.download = `${fileName}.${format}`;
     link.href = dataUrl;
     link.click();
+  } catch (err) {
+    console.error("Image export failed:", err);
+    alert(
+      "Sorry — exporting the image failed. Please try again. (You can use " +
+        "the Design download as a fallback.)",
+    );
   } finally {
     root.dataset.theme = prevTheme;
   }
