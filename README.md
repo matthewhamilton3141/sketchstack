@@ -28,6 +28,8 @@ connects instead of writing plain text.
   use it.
 - **Editing power tools** — undo/redo, duplicate, multi-select + align/
   distribute, center-snapping alignment guides.
+- **Command palette** — press `⌘K` / `Ctrl-K` to search and run any action
+  (add components, switch modes, generate the prompt, save, clear, and more).
 - **Templates** — one-click starting points (SaaS app, REST API + DB, AI RAG,
   event-driven) you can drag on and compose.
 - **Auto-save** to the browser (localStorage); **download/import** a
@@ -55,7 +57,8 @@ npm run dev
 ```
 
 Open the URL printed in the terminal (http://localhost:3000, or the next free
-port such as 3001). Guest features work immediately with no configuration.
+port such as 3001). You land on the home page — click through to open the
+editor at `/new`. Guest features work immediately with no configuration.
 
 ### Environment (for auth + cloud save)
 
@@ -90,8 +93,10 @@ Run these in the Supabase SQL Editor:
 
 ```
 src/
-  app/            App Router (editor page, /d/[id] shared view, layout, styles)
-  components/     Canvas, nodes, panels (details/edge/note/cloud/learn), auth, theming
+  app/            App Router: page.tsx (landing), new/ (editor),
+                  d/[id] (shared view), layout, styles
+  components/     Canvas, nodes, panels (details/edge/note/cloud/learn),
+                  command palette, auth, theming
   lib/            node registry, modes, prompt generator, templates, Supabase, cloud
 supabase/         SQL schema (profiles, diagrams)
 ```
