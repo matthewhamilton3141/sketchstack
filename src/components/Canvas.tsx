@@ -45,19 +45,24 @@ import {
   Share2,
   GraduationCap,
   Trash2,
+  Rows3,
+  Workflow,
 } from "lucide-react";
 import SystemNodeComponent, { type SystemNode } from "@/components/SystemNode";
 import NoteNodeComponent, {
   NOTE_COLOR,
   type NoteNode,
 } from "@/components/NoteNode";
+import GroupNodeComponent, { type GroupNode } from "@/components/GroupNode";
 import type { AppNode } from "@/lib/appNode";
 import HelperLines from "@/components/HelperLines";
 import { getHelperLines } from "@/lib/helperLines";
 import { computeAlignment, type AlignMode } from "@/lib/align";
 import DetailsPanel from "@/components/DetailsPanel";
 import NoteEditorPanel from "@/components/NoteEditorPanel";
-import EdgePanel from "@/components/EdgePanel";
+import EdgePanel, { type EdgeStyle } from "@/components/EdgePanel";
+import GroupPanel from "@/components/GroupPanel";
+import SearchPanel from "@/components/SearchPanel";
 import PromptPanel from "@/components/PromptPanel";
 import CloudPanel from "@/components/CloudPanel";
 import LearnPanel from "@/components/LearnPanel";
@@ -89,8 +94,10 @@ import {
   type DiagramMode,
   type NodeKind,
   type SystemNodeData,
+  type GroupNodeData,
 } from "@/lib/nodeTypes";
 import { MODES, MODE_ORDER } from "@/lib/modes";
+import { autoLayout } from "@/lib/autoLayout";
 
 // Concrete colors for React Flow's SVG chrome (background dots + minimap) and
 // image-export background, which can't read CSS variables. Keyed by theme.
@@ -121,9 +128,6 @@ const initialEdges: Edge[] = [
   { id: "e1-2", source: "1", target: "2", markerEnd: { type: MarkerType.ArrowClosed } },
 ];
 
-// Globally-unique id for new nodes/edges. Avoids the counter-collision class of
-// bug (e.g. dev hot-reload resetting a counter while node state persists, which
-// made a "new" node reuse an existing id and replace it).
 const genId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -131,8 +135,15 @@ const genId = () =>
 
 const DRAG_TYPE = "application/sketchstack-template";
 const DRAG_NODE_TYPE = "application/sketchstack-node";
-// Sentinel value carried in DRAG_NODE_TYPE when dragging the Note chip.
 const NOTE_DRAG = "__note__";
+const GROUP_DRAG = "__group__";
+
+// Stroke styles for edge types (fed into SVG path style).
+function edgeStrokeDasharray(style: EdgeStyle | undefined): string | undefined {
+  if (style === "dashed") return "8 4";
+  if (style === "dotted") return "2 4";
+  return undefined;
+}
 
 // Align toolbar actions (shown when 2+ nodes are selected).
 const ALIGN_ACTIONS: { mode: AlignMode; Icon: typeof Undo2; label: string }[] = [
@@ -146,9 +157,6 @@ const ALIGN_ACTIONS: { mode: AlignMode; Icon: typeof Undo2; label: string }[] = 
   { mode: "distV", Icon: AlignVerticalDistributeCenter, label: "Distribute vertically" },
 ];
 
-// STORAGE_KEY / LEGACY_KEY are imported from @/lib/storageKeys so the shared
-// viewer's "Open a copy" writes to the same working diagram.
-
 export default function Canvas() {
   const [nodes, setNodes] = useNodesState<AppNode>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -157,7 +165,6 @@ export default function Canvas() {
   const [prompt, setPrompt] = useState<string | null>(null);
   const [title, setTitle] = useState(DEFAULT_TITLE);
   const [mode, setMode] = useState<DiagramMode>("system");
-  // Cloud save: the currently-loaded cloud diagram (if any), and panel state.
   const { user } = useAuth();
   const [currentCloudId, setCurrentCloudId] = useState<string | null>(null);
   const [showCloud, setShowCloud] = useState(false);
@@ -165,25 +172,20 @@ export default function Canvas() {
   const [showLearn, setShowLearn] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
-  // Share button feedback: idle → sharing → copied (or error), auto-resets.
+  const [showSearch, setShowSearch] = useState(false);
   const [shareState, setShareState] = useState<
     "idle" | "sharing" | "copied" | "error"
   >("idle");
   const [rfInstance, setRfInstance] =
     useState<ReactFlowInstance<AppNode, Edge> | null>(null);
-  // Minimap only shows while the user is moving around, then fades out.
   const [minimapVisible, setMinimapVisible] = useState(false);
   const minimapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Alignment guide lines shown while dragging a single node.
   const [helperLineH, setHelperLineH] = useState<number | undefined>();
   const [helperLineV, setHelperLineV] = useState<number | undefined>();
-  // Undo/redo history. Each entry is a snapshot of the whole diagram.
   const [past, setPast] = useState<{ nodes: AppNode[]; edges: Edge[] }[]>([]);
   const [future, setFuture] = useState<{ nodes: AppNode[]; edges: Edge[] }[]>(
     [],
   );
-  // Gates auto-save: we must not persist until we've loaded any saved diagram,
-  // otherwise the first render would overwrite it with the default nodes.
   const [hydrated, setHydrated] = useState(false);
   const { theme } = useTheme();
   const colors = CANVAS_COLORS[theme];
@@ -193,10 +195,11 @@ export default function Canvas() {
     selected?.type === "system" ? (selected as SystemNode) : null;
   const selectedNoteNode =
     selected?.type === "note" ? (selected as NoteNode) : null;
+  const selectedGroupNode =
+    selected?.type === "group" ? (selected as GroupNode) : null;
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null;
   const selectedNodes = nodes.filter((n) => n.selected);
 
-  // Push the current diagram onto the undo stack (call BEFORE a mutation).
   const takeSnapshot = useCallback(() => {
     setPast((p) => [...p.slice(-49), { nodes, edges }]);
     setFuture([]);
@@ -260,12 +263,10 @@ export default function Canvas() {
         JSON.stringify({ nodes, edges, title, mode, cloudId: currentCloudId }),
       );
     } catch {
-      // Storage full or disabled — ignore; the app still works in-memory.
+      // Storage full or disabled — ignore.
     }
   }, [nodes, edges, title, mode, currentCloudId, hydrated]);
 
-  // Node changes with alignment snapping. When a single node is being dragged,
-  // snap it to the nearest alignment with another node and show guide lines.
   const onNodesChange = useCallback(
     (changes: NodeChange<AppNode>[]) => {
       setHelperLineH(undefined);
@@ -290,16 +291,15 @@ export default function Canvas() {
     [nodes, setNodes],
   );
 
-  // Wipe the canvas and the saved copy.
   const clearCanvas = useCallback(() => {
     takeSnapshot();
     setNodes([]);
     setEdges([]);
     setSelectedId(null);
-    setCurrentCloudId(null); // a cleared canvas is no longer the loaded cloud diagram
+    setCurrentCloudId(null);
   }, [takeSnapshot, setNodes, setEdges]);
 
-  // --- Cloud save handlers (only meaningful when signed in) ---
+  // --- Cloud save handlers ---
   const saveToCloud = useCallback(
     async (asNew: boolean) => {
       if (!user) return;
@@ -315,9 +315,6 @@ export default function Canvas() {
     [user, nodes, edges, title, mode, currentCloudId],
   );
 
-  // One-click share: ensure the diagram is saved to the cloud, mark it public,
-  // and copy its /d link. Prompts sign-in first if needed. This is the primary
-  // way to show a diagram to others now that image export is gone.
   const handleShare = useCallback(async () => {
     if (!user) {
       setShowAuth(true);
@@ -370,7 +367,6 @@ export default function Canvas() {
     [currentCloudId],
   );
 
-  // Merge a patch into the selected system node's data (details panel).
   const updateNodeData = useCallback(
     (id: string, patch: Partial<SystemNodeData>) => {
       setNodes((nds) =>
@@ -382,7 +378,6 @@ export default function Canvas() {
     [setNodes],
   );
 
-  // Merge a patch into the selected note's data (note editor panel).
   const updateNoteData = useCallback(
     (id: string, patch: Partial<NoteNode["data"]>) => {
       setNodes((nds) =>
@@ -394,17 +389,51 @@ export default function Canvas() {
     [setNodes],
   );
 
+  const updateGroupLabel = useCallback(
+    (id: string, label: string) => {
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === id
+            ? ({ ...n, data: { ...n.data, label } } as AppNode)
+            : n,
+        ),
+      );
+    },
+    [setNodes],
+  );
+
   const deleteNode = useCallback(
     (id: string) => {
+      const nodeToDelete = nodes.find((n) => n.id === id);
       takeSnapshot();
-      setNodes((nds) => nds.filter((n) => n.id !== id));
+      if (nodeToDelete?.type === "group") {
+        // Unparent children, converting relative positions back to absolute.
+        setNodes((nds) => {
+          const gp = nodeToDelete.position;
+          return nds
+            .filter((n) => n.id !== id)
+            .map((n) => {
+              if (n.parentId !== id) return n;
+              return {
+                ...n,
+                parentId: undefined,
+                extent: undefined,
+                position: {
+                  x: gp.x + n.position.x,
+                  y: gp.y + n.position.y,
+                },
+              } as AppNode;
+            });
+        });
+      } else {
+        setNodes((nds) => nds.filter((n) => n.id !== id));
+      }
       setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
       setSelectedId(null);
     },
-    [takeSnapshot, setNodes, setEdges],
+    [nodes, takeSnapshot, setNodes, setEdges],
   );
 
-  // Copy a node next to itself and select the copy.
   const duplicateNode = useCallback(
     (id: string) => {
       const source = nodes.find((n) => n.id === id);
@@ -426,13 +455,29 @@ export default function Canvas() {
     [nodes, takeSnapshot, setNodes],
   );
 
-  // Set/clear the label shown on a connection (feeds the generated prompt).
   const updateEdgeLabel = useCallback(
     (id: string, label: string) => {
       setEdges((eds) =>
         eds.map((e) =>
           e.id === id ? { ...e, label: label || undefined } : e,
         ),
+      );
+    },
+    [setEdges],
+  );
+
+  const updateEdgeStyle = useCallback(
+    (id: string, edgeStyle: EdgeStyle) => {
+      setEdges((eds) =>
+        eds.map((e) => {
+          if (e.id !== id) return e;
+          const dasharray = edgeStrokeDasharray(edgeStyle);
+          return {
+            ...e,
+            style: { ...e.style, strokeDasharray: dasharray },
+            data: { ...e.data, edgeStyle },
+          };
+        }),
       );
     },
     [setEdges],
@@ -447,8 +492,6 @@ export default function Canvas() {
     [takeSnapshot, setEdges],
   );
 
-  // Delete whatever is currently multi-selected (nodes and/or edges) plus any
-  // edges attached to deleted nodes. Used by the Delete/Backspace shortcut.
   const deleteSelected = useCallback(() => {
     const selNodeIds = new Set(
       nodes.filter((n) => n.selected).map((n) => n.id),
@@ -471,7 +514,6 @@ export default function Canvas() {
     setSelectedEdgeId(null);
   }, [nodes, edges, takeSnapshot, setNodes, setEdges]);
 
-  // Duplicate all selected nodes (Cmd/Ctrl+D).
   const duplicateSelected = useCallback(() => {
     const selected = nodes.filter((n) => n.selected);
     if (selected.length === 0) return;
@@ -492,14 +534,41 @@ export default function Canvas() {
     ]);
   }, [nodes, takeSnapshot, setNodes]);
 
-  // Register our custom node under the "system" type. Memoized so React Flow
-  // doesn't warn about a new object every render.
+  // Run Dagre auto-layout on all non-group, non-child nodes.
+  const runAutoLayout = useCallback(() => {
+    takeSnapshot();
+    const laid = autoLayout(nodes, edges);
+    setNodes(laid);
+    // Fit view after layout (next tick so new positions are applied).
+    setTimeout(() => rfInstance?.fitView({ duration: 400 }), 50);
+  }, [nodes, edges, takeSnapshot, setNodes, rfInstance]);
+
+  // Pan the canvas to a node and select it (used by Search).
+  const focusNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) =>
+        nds.map((n) => ({ ...n, selected: n.id === nodeId })),
+      );
+      setSelectedId(nodeId);
+      setSelectedEdgeId(null);
+      rfInstance?.fitView({
+        nodes: [{ id: nodeId }],
+        maxZoom: 1.5,
+        duration: 400,
+      });
+    },
+    [rfInstance, setNodes],
+  );
+
   const nodeTypes = useMemo(
-    () => ({ system: SystemNodeComponent, note: NoteNodeComponent }),
+    () => ({
+      system: SystemNodeComponent,
+      note: NoteNodeComponent,
+      group: GroupNodeComponent,
+    }),
     [],
   );
 
-  // Fired when the user drags from one node's handle to another.
   const onConnect = useCallback(
     (connection: Connection) => {
       takeSnapshot();
@@ -513,7 +582,6 @@ export default function Canvas() {
     [takeSnapshot, setEdges],
   );
 
-  // Drag an existing edge's endpoint onto a different node/handle to rewire it.
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
       takeSnapshot();
@@ -522,9 +590,48 @@ export default function Canvas() {
     [takeSnapshot, setEdges],
   );
 
-  // Merge a template into the current diagram (compose multiple templates).
-  // `position` is the flow-space top-left to drop it at; defaults to a spot
-  // offset from the origin when added by click.
+  // When a non-group node is dropped inside a group's bounds, make it a child.
+  const onNodeDragStop = useCallback(
+    (_: unknown, draggedNode: AppNode) => {
+      if (draggedNode.type === "group" || draggedNode.parentId) return;
+      const groupNodes = nodes.filter((n) => n.type === "group");
+      if (groupNodes.length === 0) return;
+
+      const nodeW = 168;
+      const nodeH = 60;
+      const cx = draggedNode.position.x + nodeW / 2;
+      const cy = draggedNode.position.y + nodeH / 2;
+
+      for (const group of groupNodes) {
+        const gw = (group.style?.width as number) ?? 400;
+        const gh = (group.style?.height as number) ?? 260;
+        if (
+          cx >= group.position.x &&
+          cx <= group.position.x + gw &&
+          cy >= group.position.y &&
+          cy <= group.position.y + gh
+        ) {
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === draggedNode.id
+                ? ({
+                    ...n,
+                    parentId: group.id,
+                    position: {
+                      x: draggedNode.position.x - group.position.x,
+                      y: draggedNode.position.y - group.position.y,
+                    },
+                  } as AppNode)
+                : n,
+            ),
+          );
+          break;
+        }
+      }
+    },
+    [nodes, setNodes],
+  );
+
   const addTemplate = useCallback(
     (template: Template, position?: { x: number; y: number }) => {
       takeSnapshot();
@@ -533,7 +640,6 @@ export default function Canvas() {
       const baseX = position?.x ?? 160;
       const baseY = position?.y ?? 160;
 
-      // Remap template ids to fresh ids so repeated adds never collide.
       const idMap = new Map<string, string>();
       const newNodes: SystemNode[] = template.nodes.map((n) => {
         const id = genId();
@@ -564,12 +670,11 @@ export default function Canvas() {
     [takeSnapshot, setNodes, setEdges],
   );
 
-  // Align/distribute the currently multi-selected nodes.
   const alignSelected = useCallback(
-    (mode: AlignMode) => {
-      const selected = nodes.filter((n) => n.selected);
-      if (selected.length < 2) return;
-      const positions = computeAlignment(selected, mode);
+    (alignMode: AlignMode) => {
+      const sel = nodes.filter((n) => n.selected);
+      if (sel.length < 2) return;
+      const positions = computeAlignment(sel, alignMode);
       takeSnapshot();
       setNodes((nds) =>
         nds.map((n) =>
@@ -580,7 +685,6 @@ export default function Canvas() {
     [nodes, takeSnapshot, setNodes],
   );
 
-  // Show the minimap and (re)arm the timer that hides it after inactivity.
   const pokeMinimap = useCallback(() => {
     setMinimapVisible(true);
     if (minimapTimer.current) clearTimeout(minimapTimer.current);
@@ -596,8 +700,6 @@ export default function Canvas() {
         {
           id,
           type: "system",
-          // Use the drop position if given, else a slightly random spot so
-          // click-added nodes don't stack exactly.
           position: position ?? {
             x: 120 + Math.random() * 240,
             y: 120 + Math.random() * 240,
@@ -611,7 +713,6 @@ export default function Canvas() {
     [takeSnapshot, setNodes],
   );
 
-  // Create a standalone note card (click or drop from the palette).
   const addNote = useCallback(
     (position?: { x: number; y: number }) => {
       takeSnapshot();
@@ -635,7 +736,29 @@ export default function Canvas() {
     [takeSnapshot, setNodes],
   );
 
-  // Drop a dragged node type or template onto the canvas at the cursor.
+  const addGroup = useCallback(
+    (position?: { x: number; y: number }) => {
+      takeSnapshot();
+      const id = genId();
+      const group: GroupNode = {
+        id,
+        type: "group",
+        position: position ?? {
+          x: 80 + Math.random() * 200,
+          y: 80 + Math.random() * 200,
+        },
+        style: { width: 400, height: 260 },
+        zIndex: -1,
+        data: { label: "Group" },
+        selected: true,
+      };
+      // Groups go first in the array so they render behind other nodes.
+      setNodes((nds) => [group, ...nds.map((n) => ({ ...n, selected: false }))]);
+      setSelectedId(id);
+    },
+    [takeSnapshot, setNodes],
+  );
+
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -650,6 +773,10 @@ export default function Canvas() {
         addNote(position);
         return;
       }
+      if (dragged === GROUP_DRAG) {
+        addGroup(position);
+        return;
+      }
       const kind = dragged as NodeKind;
       if (kind && NODE_KINDS[kind]) {
         addNode(kind, NODE_KINDS[kind].label, position);
@@ -660,16 +787,15 @@ export default function Canvas() {
       );
       if (template) addTemplate(template, position);
     },
-    [rfInstance, addNode, addNote, addTemplate],
+    [rfInstance, addNode, addNote, addGroup, addTemplate],
   );
 
-  // Hidden file input drives "Import design".
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onImportFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      e.target.value = ""; // let the same file be re-imported later
+      e.target.value = "";
       if (!file) return;
       try {
         const {
@@ -692,8 +818,6 @@ export default function Canvas() {
     [takeSnapshot, setNodes, setEdges],
   );
 
-  // Keyboard shortcuts: undo/redo, duplicate, delete. Ignored while typing in a
-  // field so native text editing (and text undo) keeps working.
   useEffect(() => {
     const isTyping = () => {
       const el = document.activeElement as HTMLElement | null;
@@ -711,6 +835,12 @@ export default function Canvas() {
       if (mod && key === "k") {
         e.preventDefault();
         setShowPalette((v) => !v);
+        return;
+      }
+      // ⌘F opens canvas search (even while typing).
+      if (mod && key === "f") {
+        e.preventDefault();
+        setShowSearch((v) => !v);
         return;
       }
       if (isTyping()) return;
@@ -750,6 +880,7 @@ export default function Canvas() {
         attributionPosition="bottom-left"
         deleteKeyCode={null}
         onNodeDragStart={takeSnapshot}
+        onNodeDragStop={onNodeDragStop}
         onInit={setRfInstance}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -785,6 +916,7 @@ export default function Canvas() {
           zoomable
           nodeColor={(n) => {
             if (n.type === "note") return NOTE_COLOR;
+            if (n.type === "group") return "transparent";
             const d = n.data as SystemNodeData;
             return d.color ?? NODE_KINDS[d.kind]?.color ?? "#94a3b8";
           }}
@@ -820,46 +952,61 @@ export default function Canvas() {
                 <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)] opacity-70">
                   Templates · drag or click
                 </div>
-              <div className="flex flex-col gap-1">
-                {TEMPLATES.map((t) => (
-                  <button
-                    key={t.id}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData(DRAG_TYPE, t.id);
-                      e.dataTransfer.effectAllowed = "copy";
-                    }}
-                    onClick={() => addTemplate(t)}
-                    className="cursor-grab rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-2 py-1 text-left text-xs font-medium text-[var(--text)] hover:bg-[var(--border)] active:cursor-grabbing"
-                    title={t.description}
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
+                <div className="flex flex-col gap-1">
+                  {TEMPLATES.map((t) => (
+                    <button
+                      key={t.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(DRAG_TYPE, t.id);
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={() => addTemplate(t)}
+                      className="cursor-grab rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-2 py-1 text-left text-xs font-medium text-[var(--text)] hover:bg-[var(--border)] active:cursor-grabbing"
+                      title={t.description}
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : null}
             <div className="mb-2">
               <div className="px-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted)] opacity-70">
                 Annotate · drag or click
               </div>
-              <button
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(DRAG_NODE_TYPE, NOTE_DRAG);
-                  e.dataTransfer.effectAllowed = "copy";
-                }}
-                onClick={() => addNote()}
-                style={{
-                  borderColor: NOTE_COLOR,
-                  backgroundColor: `${NOTE_COLOR}1a`,
-                }}
-                className="flex w-full cursor-grab items-center gap-1 rounded-md border px-1.5 py-1 text-xs font-medium text-[var(--text)] transition-transform hover:scale-[1.03] active:cursor-grabbing"
-                title="Click to add or drag onto canvas — Note"
-              >
-                <StickyNote size={13} style={{ color: NOTE_COLOR }} strokeWidth={2.25} />
-                Note
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(DRAG_NODE_TYPE, NOTE_DRAG);
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
+                  onClick={() => addNote()}
+                  style={{
+                    borderColor: NOTE_COLOR,
+                    backgroundColor: `${NOTE_COLOR}1a`,
+                  }}
+                  className="flex w-full cursor-grab items-center gap-1 rounded-md border px-1.5 py-1 text-xs font-medium text-[var(--text)] transition-transform hover:scale-[1.03] active:cursor-grabbing"
+                  title="Click to add or drag onto canvas — Note"
+                >
+                  <StickyNote size={13} style={{ color: NOTE_COLOR }} strokeWidth={2.25} />
+                  Note
+                </button>
+                <button
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(DRAG_NODE_TYPE, GROUP_DRAG);
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
+                  onClick={() => addGroup()}
+                  className="flex w-full cursor-grab items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-1.5 py-1 text-xs font-medium text-[var(--text)] transition-transform hover:scale-[1.03] active:cursor-grabbing"
+                  title="Click to add or drag onto canvas — Group / swimlane"
+                >
+                  <Rows3 size={13} className="text-[var(--muted)]" strokeWidth={2.25} />
+                  Group
+                </button>
+              </div>
             </div>
             <div className="mb-1 flex items-center justify-between px-1">
               <span className="text-xs font-semibold text-[var(--muted)]">
@@ -915,6 +1062,15 @@ export default function Canvas() {
                 <Redo2 size={15} />
               </button>
               <button
+                onClick={runAutoLayout}
+                disabled={nodes.filter((n) => n.type !== "group").length < 2}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)] disabled:opacity-30"
+                title="Auto-arrange nodes (Dagre top-to-bottom layout)"
+              >
+                <Workflow size={13} />
+                Layout
+              </button>
+              <button
                 onClick={() => setConfirmClear(true)}
                 disabled={nodes.length === 0 && edges.length === 0}
                 className="flex items-center gap-1 rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
@@ -939,6 +1095,13 @@ export default function Canvas() {
                 title="Learn how to build a system design"
               >
                 <GraduationCap size={14} /> Learn
+              </button>
+              <button
+                onClick={() => setShowSearch(true)}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-2)]"
+                title="Search nodes (⌘F)"
+              >
+                ⌘F
               </button>
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -1042,11 +1205,22 @@ export default function Canvas() {
             />
           </Panel>
         ) : null}
+        {selectedGroupNode ? (
+          <Panel position="top-right">
+            <GroupPanel
+              node={selectedGroupNode}
+              onChange={(label) => updateGroupLabel(selectedGroupNode.id, label)}
+              onDelete={() => deleteNode(selectedGroupNode.id)}
+              onClose={() => setSelectedId(null)}
+            />
+          </Panel>
+        ) : null}
         {selectedEdge ? (
           <Panel position="top-right">
             <EdgePanel
               edge={selectedEdge}
               onChange={(label) => updateEdgeLabel(selectedEdge.id, label)}
+              onStyleChange={(style) => updateEdgeStyle(selectedEdge.id, style)}
               onDelete={() => deleteEdge(selectedEdge.id)}
               onClose={() => setSelectedEdgeId(null)}
             />
@@ -1080,6 +1254,13 @@ export default function Canvas() {
             setShowLearn(false);
           }}
           onClose={() => setShowLearn(false)}
+        />
+      ) : null}
+      {showSearch ? (
+        <SearchPanel
+          nodes={nodes}
+          onFocus={focusNode}
+          onClose={() => setShowSearch(false)}
         />
       ) : null}
       {confirmClear ? (

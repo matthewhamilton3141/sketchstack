@@ -15,7 +15,7 @@ interface LearnPanelProps {
 }
 
 const STEPS = [
-  "Pick a mode (System, App flow, Database, Planning) — the palette adapts to it.",
+  "Pick a mode (System, App flow, Database, Planning, Infrastructure) — the palette adapts to it.",
   "Drag components from the palette onto the canvas, or click to drop one in.",
   "Connect them: drag from a node's dot to another to draw a labeled arrow.",
   "Add sticky notes for context, then Generate Prompt to hand it to an AI agent.",

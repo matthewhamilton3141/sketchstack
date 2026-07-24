@@ -9,6 +9,7 @@ import type { Edge } from "@xyflow/react";
 
 import SystemNodeComponent from "@/components/SystemNode";
 import NoteNodeComponent from "@/components/NoteNode";
+import GroupNodeComponent from "@/components/GroupNode";
 import { NoteDisplayContext } from "@/components/noteDisplay";
 import HeaderLinks from "@/components/HeaderLinks";
 import { loadDiagram, type DiagramData } from "@/lib/cloudDiagrams";
@@ -39,7 +40,11 @@ export default function SharedDiagram({ id }: { id: string }) {
   };
 
   const nodeTypes = useMemo(
-    () => ({ system: SystemNodeComponent, note: NoteNodeComponent }),
+    () => ({
+      system: SystemNodeComponent,
+      note: NoteNodeComponent,
+      group: GroupNodeComponent,
+    }),
     [],
   );
 

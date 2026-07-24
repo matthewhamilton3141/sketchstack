@@ -21,21 +21,26 @@ import {
   Flag,
   Globe,
   HardDrive,
+  Hash,
   KeyRound,
   Layers,
   Link2,
   ListChecks,
   ListTodo,
+  Lock,
   Mails,
   Milestone as MilestoneIcon,
   Monitor,
   MousePointerClick,
   Navigation,
   Network,
+  Package,
   Scale,
   Server,
+  Shield,
   Sparkles,
   Table as TableIcon,
+  UserCheck,
   Warehouse,
   Workflow,
   Zap,
@@ -44,7 +49,6 @@ import {
   CornerDownRight,
   FileText,
   GitFork,
-  Hash,
   List,
   ListOrdered,
   Loader,
@@ -58,7 +62,7 @@ import {
 
 // Diagrams have a mode; each mode shows its own pack of node kinds and gets a
 // tailored generated prompt.
-export type DiagramMode = "system" | "appflow" | "database" | "planning";
+export type DiagramMode = "system" | "appflow" | "database" | "planning" | "infra";
 
 export type NodeKind =
   // System design
@@ -115,6 +119,21 @@ export type NodeKind =
   | "sprint"
   | "risk"
   | "decision"
+  // Infrastructure / cloud
+  | "vm"
+  | "container_svc"
+  | "fn"
+  | "k8s"
+  | "vpc"
+  | "sg"
+  | "lb"
+  | "blob"
+  | "blk"
+  | "rdb"
+  | "kv"
+  | "msg"
+  | "iam"
+  | "vault"
   // Universal
   | "custom";
 
@@ -193,6 +212,22 @@ export const NODE_KINDS: Record<NodeKind, NodeKindSpec> = {
   risk: { kind: "risk", label: "Risk", category: "Planning", color: "#fb7185", icon: ShieldAlert, techHint: "blocker / risk", description: "A threat or blocker to the plan. Use it to surface and track what could go wrong." },
   decision: { kind: "decision", label: "Decision", category: "Planning", color: "#fbbf24", icon: GitFork, techHint: "choice / ADR", description: "A recorded choice (ADR). Use it to capture why an approach was picked." },
 
+  // --- Infrastructure / cloud ---
+  vm: { kind: "vm", label: "Virtual Machine", category: "Compute", color: "#60a5fa", icon: Server, techHint: "EC2, GCE, Azure VM…", description: "A general-purpose compute instance. Use it for apps, scripts, or workloads that need an OS." },
+  container_svc: { kind: "container_svc", label: "Container Service", category: "Compute", color: "#38bdf8", icon: Package, techHint: "ECS, GKE, AKS…", description: "A managed container runtime. Use it to deploy Dockerised workloads without managing servers." },
+  fn: { kind: "fn", label: "Serverless Fn", category: "Compute", color: "#818cf8", icon: Zap, techHint: "Lambda, Cloud Functions…", description: "An event-driven function that runs on demand. Use it for lightweight, stateless tasks." },
+  k8s: { kind: "k8s", label: "Kubernetes", category: "Compute", color: "#22d3ee", icon: Network, techHint: "EKS, GKE, AKS…", description: "A managed Kubernetes cluster. Use it to orchestrate containerised microservices at scale." },
+  vpc: { kind: "vpc", label: "VPC / Network", category: "Networking", color: "#34d399", icon: Layers, techHint: "VPC, VNet, GCP VPC…", description: "An isolated virtual network. Use it to group resources and control traffic between them." },
+  sg: { kind: "sg", label: "Security Group", category: "Networking", color: "#f87171", icon: Shield, techHint: "SG, NACL, NSG, WAF…", description: "A firewall or WAF rule set. Use it to allow or block traffic at the network or app layer." },
+  lb: { kind: "lb", label: "Load Balancer / CDN", category: "Networking", color: "#fb923c", icon: Scale, techHint: "ALB, CloudFront, Cloudflare…", description: "Distributes traffic or caches assets at the edge. Use it to balance load or accelerate static content." },
+  blob: { kind: "blob", label: "Object Storage", category: "Storage", color: "#2dd4bf", icon: HardDrive, techHint: "S3, GCS, Azure Blob…", description: "Infinitely scalable blob / object store. Use it for files, images, backups, and data exports." },
+  blk: { kind: "blk", label: "Block / File Storage", category: "Storage", color: "#94a3b8", icon: Database, techHint: "EBS, Persistent Disk, EFS…", description: "Block or file storage attached to compute. Use it for databases, logs, or shared volumes." },
+  rdb: { kind: "rdb", label: "Managed Database", category: "Managed Data", color: "#4ade80", icon: Database, techHint: "RDS, Cloud SQL, Azure SQL…", description: "A fully managed relational database. Use it to avoid patching and backups yourself." },
+  kv: { kind: "kv", label: "NoSQL / Key-Value", category: "Managed Data", color: "#fbbf24", icon: Hash, techHint: "DynamoDB, Firestore, CosmosDB…", description: "A managed NoSQL or key-value store. Use it for flexible schemas or ultra-low-latency lookups." },
+  msg: { kind: "msg", label: "Queue / Events", category: "Managed Data", color: "#f59e0b", icon: Mails, techHint: "SQS, SNS, Pub/Sub, EventBridge…", description: "A managed message queue or event bus. Use it to decouple services and fan out events." },
+  iam: { kind: "iam", label: "IAM / Identity", category: "Security", color: "#fb7185", icon: UserCheck, techHint: "IAM, Entra, GCP IAM…", description: "Manages roles, permissions, and service accounts. Use it to control who can do what." },
+  vault: { kind: "vault", label: "Secrets Manager", category: "Security", color: "#e879f9", icon: Lock, techHint: "Secrets Manager, Vault, GCP Secret…", description: "Stores API keys, credentials, and certs securely. Use it to avoid hard-coding secrets." },
+
   // --- Universal (available in every mode; recolor + rename it yourself) ---
   custom: { kind: "custom", label: "Custom", category: "Custom", color: "#94a3b8", icon: Box, techHint: "anything…", description: "A blank node you name and color yourself. Use it for anything the presets don't cover." },
 };
@@ -217,6 +252,13 @@ export const MODE_KINDS: Record<DiagramMode, NodeKind[]> = {
   planning: [
     "epic", "story", "task", "subtask", "bug",
     "milestone", "sprint", "risk", "decision",
+  ],
+  infra: [
+    "vm", "container_svc", "fn", "k8s",
+    "vpc", "sg", "lb",
+    "blob", "blk",
+    "rdb", "kv", "msg",
+    "iam", "vault",
   ],
 };
 
@@ -248,6 +290,24 @@ export const ALL_CATEGORY_ORDER: string[] = Object.values(NODE_KINDS).reduce<
   return acc;
 }, []);
 
+// Annotation badges that can be attached to any system node.
+export type NodeBadge =
+  | "bottleneck"
+  | "scaled"
+  | "critical"
+  | "planned"
+  | "deprecated"
+  | "new";
+
+export const BADGE_CONFIG: Record<NodeBadge, { label: string; color: string }> = {
+  bottleneck: { label: "bottleneck", color: "#ef4444" },
+  scaled:     { label: "scaled",     color: "#3b82f6" },
+  critical:   { label: "critical",   color: "#f97316" },
+  planned:    { label: "planned",    color: "#94a3b8" },
+  deprecated: { label: "deprecated", color: "#6b7280" },
+  new:        { label: "new",        color: "#22c55e" },
+};
+
 // The shape of `data` carried by every system node on the canvas.
 export interface SystemNodeData {
   kind: NodeKind;
@@ -255,5 +315,12 @@ export interface SystemNodeData {
   tech?: string; // chosen technology, e.g. "Postgres"
   notes?: string; // free-form details, feeds the generated prompt
   color?: string; // optional per-node color override (hex); defaults to kind color
+  badges?: NodeBadge[]; // optional annotation flags shown on the card
   [key: string]: unknown; // React Flow requires an index signature on node data
+}
+
+// The shape of `data` carried by a group / swimlane node.
+export interface GroupNodeData {
+  label: string;
+  [key: string]: unknown;
 }

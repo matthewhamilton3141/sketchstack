@@ -61,6 +61,19 @@ export const MODES: Record<DiagramMode, ModeConfig> = {
       "connection is a dependency (the source must be done before the target); " +
       "produce a step-by-step checklist that respects the dependency order.",
   },
+  infra: {
+    id: "infra",
+    label: "Infrastructure",
+    promptTitle: "Cloud Infrastructure",
+    itemsHeading: "Resources",
+    connectionsHeading: "Traffic / Data Flow",
+    emptyHint: "Add cloud resources to the canvas to generate an infrastructure spec.",
+    instructions:
+      "Provision the cloud infrastructure described above using infrastructure-as-code " +
+      "(Terraform, Pulumi, or CloudFormation). Treat each resource as a discrete cloud " +
+      "primitive, use the specified services where given, and wire up the connections " +
+      "as traffic routing, data flow, or IAM trust relationships.",
+  },
 };
 
 export const MODE_ORDER: DiagramMode[] = [
@@ -68,4 +81,5 @@ export const MODE_ORDER: DiagramMode[] = [
   "appflow",
   "database",
   "planning",
+  "infra",
 ];

@@ -1,6 +1,11 @@
 "use client";
 
-import { NODE_KINDS, type SystemNodeData } from "@/lib/nodeTypes";
+import {
+  NODE_KINDS,
+  BADGE_CONFIG,
+  type SystemNodeData,
+  type NodeBadge,
+} from "@/lib/nodeTypes";
 import type { SystemNode } from "@/components/SystemNode";
 
 interface DetailsPanelProps {
@@ -14,7 +19,9 @@ interface DetailsPanelProps {
 const inputClass =
   "w-full rounded-md border border-[var(--border)] bg-[var(--panel-2)] px-2 py-1 text-sm text-[var(--text)] outline-none focus:border-[var(--muted)]";
 
-// Side panel for editing the selected node's name, tech, and notes.
+const ALL_BADGES = Object.keys(BADGE_CONFIG) as NodeBadge[];
+
+// Side panel for editing the selected node's name, tech, notes, badges, and color.
 export default function DetailsPanel({
   node,
   onChange,
@@ -24,12 +31,20 @@ export default function DetailsPanel({
 }: DetailsPanelProps) {
   const spec = NODE_KINDS[node.data.kind];
   const Icon = spec.icon;
-  // Turn the tech hint ("Postgres, MongoDB…") into autocomplete suggestions.
   const techSuggestions = spec.techHint
     .replace(/…/g, "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+
+  const currentBadges = node.data.badges ?? [];
+
+  const toggleBadge = (badge: NodeBadge) => {
+    const next = currentBadges.includes(badge)
+      ? currentBadges.filter((b) => b !== badge)
+      : [...currentBadges, badge];
+    onChange({ badges: next.length > 0 ? next : undefined });
+  };
 
   return (
     <div className="w-72 rounded-lg border border-[var(--border)] bg-[var(--panel)] p-3 shadow-md">
@@ -109,7 +124,7 @@ export default function DetailsPanel({
         </datalist>
       </label>
 
-      <label className="mb-3 block">
+      <label className="mb-2 block">
         <span className="mb-0.5 block text-xs font-medium text-[var(--muted)]">
           Notes
         </span>
@@ -117,10 +132,45 @@ export default function DetailsPanel({
           value={node.data.notes ?? ""}
           onChange={(e) => onChange({ notes: e.target.value })}
           placeholder="Responsibilities, key endpoints, constraints…"
-          rows={4}
+          rows={3}
           className={`${inputClass} resize-none`}
         />
       </label>
+
+      <div className="mb-3">
+        <span className="mb-1 block text-xs font-medium text-[var(--muted)]">
+          Flags
+        </span>
+        <div className="flex flex-wrap gap-1">
+          {ALL_BADGES.map((badge) => {
+            const cfg = BADGE_CONFIG[badge];
+            const active = currentBadges.includes(badge);
+            return (
+              <button
+                key={badge}
+                onClick={() => toggleBadge(badge)}
+                style={
+                  active
+                    ? {
+                        color: cfg.color,
+                        borderColor: `${cfg.color}66`,
+                        backgroundColor: `${cfg.color}22`,
+                      }
+                    : undefined
+                }
+                className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                  active
+                    ? ""
+                    : "border-[var(--border)] text-[var(--muted)] hover:border-[var(--muted)]"
+                }`}
+                title={active ? `Remove "${cfg.label}" flag` : `Add "${cfg.label}" flag`}
+              >
+                {cfg.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="flex gap-2">
         <button

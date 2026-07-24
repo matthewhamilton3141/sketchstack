@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { NODE_KINDS, type SystemNodeData } from "@/lib/nodeTypes";
+import { NODE_KINDS, BADGE_CONFIG, type SystemNodeData } from "@/lib/nodeTypes";
 
 export type SystemNode = Node<SystemNodeData, "system">;
 
@@ -22,9 +22,6 @@ function SystemNodeComponent({ data, selected }: NodeProps<SystemNode>) {
         selected ? "ring-2 ring-offset-1 ring-[var(--muted)]" : ""
       }`}
     >
-      {/* One handle per side, each with a UNIQUE id. isConnectableStart/End on
-          every handle means ANY dot can both start and receive a connection
-          (click a dot, then click another — the line follows the cursor). */}
       <Handle id="top" type="source" position={Position.Top} isConnectableStart isConnectableEnd style={{ background: color }} className={handleClass} />
       <Handle id="left" type="source" position={Position.Left} isConnectableStart isConnectableEnd style={{ background: color }} className={handleClass} />
 
@@ -39,6 +36,27 @@ function SystemNodeComponent({ data, selected }: NodeProps<SystemNode>) {
       </div>
       {data.tech ? (
         <div className="mt-0.5 text-xs text-[var(--muted)]">{data.tech}</div>
+      ) : null}
+
+      {data.badges && data.badges.length > 0 ? (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {data.badges.map((badge) => {
+            const cfg = BADGE_CONFIG[badge];
+            return (
+              <span
+                key={badge}
+                style={{
+                  color: cfg.color,
+                  borderColor: `${cfg.color}55`,
+                  backgroundColor: `${cfg.color}18`,
+                }}
+                className="rounded border px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
+              >
+                {cfg.label}
+              </span>
+            );
+          })}
+        </div>
       ) : null}
 
       <Handle id="bottom" type="source" position={Position.Bottom} isConnectableStart isConnectableEnd style={{ background: color }} className={handleClass} />
